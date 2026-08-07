@@ -82,8 +82,14 @@ struct HomeScreen: View {
                 .buttonStyle(PressStyle())
                 .position(x: centerX, y: max(40, cardY - TripCardView.size.height / 2 - 62))
 
-                ForEach([-1, 0, 1], id: \.self) { slot in
-                    card(slot: slot, centerX: centerX, centerY: cardY)
+                if store.trips.isEmpty {
+                    emptyDeckMessage
+                        .frame(width: min(geo.size.width - 56, TripCardView.size.width))
+                        .position(x: centerX, y: cardY)
+                } else {
+                    ForEach([-1, 0, 1], id: \.self) { slot in
+                        card(slot: slot, centerX: centerX, centerY: cardY)
+                    }
                 }
 
                 if let toast = store.toast {
@@ -112,6 +118,18 @@ struct HomeScreen: View {
                 }
             }
         }
+    }
+
+    /// Shown once every trip in the category has been discarded. This copy is
+    /// not in the generated content bundle, so it stays English while the
+    /// category name follows the active language, matching the tab below.
+    private var emptyDeckMessage: some View {
+        Text("Whoa, there's nothing here... Did you discard everything in \(store.S.categoryName(store.category))?")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(theme.textSecondary)
+            .multilineTextAlignment(.center)
+            .lineSpacing(3)
+            .transition(.opacity)
     }
 
     @ViewBuilder

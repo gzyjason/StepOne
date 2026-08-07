@@ -402,7 +402,7 @@ struct DiscardedScreen: View {
     }
 
     private func row(_ ref: DiscardRef, at offset: Int) -> some View {
-        let trip = store.trips(for: ref.category)[safe: ref.index]
+        let trip = store.trip(for: ref)
         return HStack(spacing: 12) {
             CategoryIcon(category: ref.category, color: theme.icon, size: 20)
             VStack(alignment: .leading, spacing: 1) {

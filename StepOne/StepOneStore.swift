@@ -52,6 +52,10 @@ final class StepOneStore {
     var chosen = ["creativity", "physical", "housework"]
     var index = 0
 
+    /// Display order per category, as indices into the content list. Empty
+    /// means "as authored"; completing a trip rewrites the entry.
+    var tripOrder: [String: [Int]] = [:]
+
     // Card interaction
     var drag: CGSize = .zero
     var isDragging = false
@@ -135,6 +139,10 @@ final class StepOneStore {
 
     let slot: CGFloat = 340
 
+    /// How many other trips must sit between the new current trip and the one
+    /// just completed, on each side of the circular list.
+    let completedGap = 5
+
     // MARK: Derived
 
     var isNight: Bool { nightOverride ?? false }
@@ -145,10 +153,33 @@ final class StepOneStore {
     var displayName: String { name ?? "Alex" }
     var displayEmail: String { email ?? "alex@example.com" }
 
-    var trips: [TripSpec] { content.trips(lang: lang, category: category) }
+    var trips: [TripSpec] { trips(for: category) }
 
     func trips(for category: String) -> [TripSpec] {
-        content.trips(lang: lang, category: category)
+        let source = content.trips(lang: lang, category: category)
+        return order(for: category).compactMap { source[safe: $0] }
+    }
+
+    /// The order of the trips still in play for a category: content indices
+    /// with anything discarded left out, fitted to the active language's trip
+    /// count — the translations are not all the same length, so stored
+    /// positions past the end are dropped and any new ones appended.
+    func order(for category: String) -> [Int] {
+        let count = content.trips(lang: lang, category: category).count
+        let dropped = discardedIndices(for: category)
+        var result = (tripOrder[category] ?? []).filter { $0 < count && !dropped.contains($0) }
+        let seen = Set(result)
+        result.append(contentsOf: (0..<count).filter { !seen.contains($0) && !dropped.contains($0) })
+        return result
+    }
+
+    private func discardedIndices(for category: String) -> Set<Int> {
+        Set(discarded.lazy.filter { $0.category == category }.map(\.index))
+    }
+
+    /// Discarded refs point into the content list, so they survive reordering.
+    func trip(for ref: DiscardRef) -> TripSpec? {
+        content.trips(lang: lang, category: ref.category)[safe: ref.index]
     }
 
     func wrapped(_ i: Int) -> Int {
@@ -208,12 +239,42 @@ final class StepOneStore {
             guard !Task.isCancelled, let self else { return }
             self.meters += gain
             self.done += 1
-            self.index = self.wrapped(self.index + 1)
+            self.relocateCompleted(at: self.wrapped(self.index))
             self.snapBack()
             self.isFading = false
             self.isAnimating = false
             self.showToast(self.S("traveled", "d", self.unit.format(self.meters)))
         }
+    }
+
+    /// Moves the trip at `position` to a random spot elsewhere in the list
+    /// instead of dropping it: the rest is rotated so the next trip becomes the
+    /// current one, and the completed trip is reinserted with at least
+    /// `completedGap` other trips between it and the new current trip on both
+    /// sides of the circle. Lists too short for that gap get the farthest spot
+    /// available.
+    private func relocateCompleted(at position: Int) {
+        var remaining = order(for: category)
+        let count = remaining.count
+        guard count > 1, remaining.indices.contains(position) else {
+            index = wrapped(index + 1)
+            return
+        }
+
+        let moved = remaining.remove(at: position)
+        // Rotate so the trip that followed the completed one leads the list.
+        let start = position % remaining.count
+        var next = Array(remaining[start...] + remaining[..<start])
+
+        // Offset 0 is the new current trip, so the completed one lands in
+        // 1...count-1; the gap narrows that to lower...upper.
+        let lower = min(completedGap + 1, count - 1)
+        let upper = max(count - completedGap - 1, 1)
+        let offset = lower <= upper ? Int.random(in: lower...upper) : max(1, count / 2)
+
+        next.insert(moved, at: offset)
+        tripOrder[category] = next
+        index = 0
     }
 
     func discardTrip() {
@@ -228,9 +289,13 @@ final class StepOneStore {
         slideTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(440))
             guard !Task.isCancelled, let self else { return }
-            let ref = DiscardRef(category: self.category, index: self.wrapped(self.index))
+            let position = self.wrapped(self.index)
+            let contentIndex = self.order(for: self.category)[safe: position] ?? position
+            let ref = DiscardRef(category: self.category, index: contentIndex)
             if !self.discarded.contains(ref) { self.discarded.append(ref) }
-            self.index = self.wrapped(self.index + 1)
+            // The trip has left the deck, so the one after it now sits at
+            // `position` — or the deck wraps, or it has run out entirely.
+            self.index = self.wrapped(position)
             self.snapBack()
             self.isFading = false
             self.isAnimating = false
