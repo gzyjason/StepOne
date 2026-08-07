@@ -8,6 +8,10 @@
 
 import SwiftUI
 
+/// Locked direction of a card drag. Shared by the home deck and the
+/// onboarding demo deck, which handle swipes the same way.
+enum DragAxis { case horizontal, vertical }
+
 // MARK: - Press feedback
 
 struct PressStyle: ButtonStyle {
@@ -236,12 +240,12 @@ struct TripCardView: View {
                     .padding(.top, 8)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Spacer(minLength: 12)
-
+                // Takes every point left under the copy so the emoji lands in
+                // the middle of that block rather than hugging its bottom.
                 Text(emoji)
                     .font(.system(size: 112))
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 12)
             }
             .padding(EdgeInsets(top: 24, leading: 24, bottom: 22, trailing: 24))
 
@@ -477,15 +481,26 @@ struct GlassField: View {
     }
 }
 
+/// Inline validation message under a field. The row is laid out whether or not
+/// there is a message, so an error appearing never pushes the rest of the form
+/// around. Pass an empty string for the quiet state.
 struct FieldError: View {
     let message: String
     let theme: StepOneTheme
+    /// Matches the horizontal inset of the field it sits under.
+    var inset: CGFloat = 6
+
+    /// One line of the message font, rounded up. Longer copy still wraps and
+    /// grows the row — the reserve only covers the single-line case, which is
+    /// every message at every stock screen width.
+    static let reservedHeight: CGFloat = 16
+
     var body: some View {
         Text(message)
             .font(.system(size: 13))
             .foregroundStyle(theme.destructive)
-            .padding(.horizontal, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, inset)
+            .frame(maxWidth: .infinity, minHeight: Self.reservedHeight, alignment: .topLeading)
     }
 }
 

@@ -278,12 +278,12 @@ private struct RegistrationPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Email address", text: $store.rgEmail, theme: theme, keyboard: .emailAddress)
-                if !store.rgErrEmail.isEmpty { FieldError(message: store.rgErrEmail, theme: theme) }
+                FieldError(message: store.rgErrEmail, theme: theme)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Password", text: $store.rgPw, theme: theme, secure: true)
-                if !store.rgErrPw.isEmpty { FieldError(message: store.rgErrPw, theme: theme) }
+                FieldError(message: store.rgErrPw, theme: theme)
                 Text("8 or more characters, numbers, and at least one letter")
                     .font(.system(size: 12))
                     .foregroundStyle(theme.hint)
@@ -292,7 +292,7 @@ private struct RegistrationPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Confirm password", text: $store.rgPw2, theme: theme, secure: true)
-                if !store.rgErrPw2.isEmpty { FieldError(message: store.rgErrPw2, theme: theme) }
+                FieldError(message: store.rgErrPw2, theme: theme)
             }
 
             PrimaryButton(title: "Register", theme: theme, busy: store.busy == .rgRegister) {
@@ -318,13 +318,12 @@ private struct RegistrationPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Email address", text: $store.rgLoginEmail, theme: theme, keyboard: .emailAddress)
-                if store.rgLoginEmptyEmail { FieldError(message: "Enter your email address", theme: theme) }
+                FieldError(message: store.rgLoginEmptyEmail ? "Enter your email address" : "", theme: theme)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Password", text: $store.rgLoginPw, theme: theme, secure: true)
-                if store.rgLoginEmptyPw { FieldError(message: "Enter your password", theme: theme) }
-                if store.rgLoginError { FieldError(message: "email or password is incorrect", theme: theme) }
+                FieldError(message: loginPasswordError, theme: theme)
             }
 
             PrimaryButton(title: "Log in", theme: theme, busy: store.busy == .rgLogin) {
@@ -352,7 +351,7 @@ private struct RegistrationPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Verification code", text: $store.rgCode, theme: theme, keyboard: .numberPad, tracking: 2)
-                if !store.rgErrCode.isEmpty { FieldError(message: store.rgErrCode, theme: theme) }
+                FieldError(message: store.rgErrCode, theme: theme)
             }
 
             PrimaryButton(title: store.S["confirm"], theme: theme, busy: store.busy == .rgVerify) {
@@ -374,6 +373,13 @@ private struct RegistrationPanel: View {
 
             demoHint("demo code 123456")
         }
+    }
+
+    /// The two password-side failures are mutually exclusive — `rgLogin()`
+    /// clears one before setting the other — so they share a single reserved row.
+    private var loginPasswordError: String {
+        if store.rgLoginEmptyPw { return "Enter your password" }
+        return store.rgLoginError ? "email or password is incorrect" : ""
     }
 
     private var codeTarget: String {
@@ -738,26 +744,23 @@ struct PasswordScreen: View {
                     .lineSpacing(3)
                     .padding(.horizontal, 6)
 
-                VStack(spacing: 0) {
-                    SecureField(store.S["newPw"], text: $store.pwNew)
-                        .font(.system(size: 16))
-                        .foregroundStyle(theme.textPrimary)
-                        .padding(.horizontal, 18)
-                        .frame(height: 54)
-                    Separator(theme: theme, inset: 18)
-                    SecureField(store.S["confirmPw"], text: $store.pwConfirm)
-                        .font(.system(size: 16))
-                        .foregroundStyle(theme.textPrimary)
-                        .padding(.horizontal, 18)
-                        .frame(height: 54)
-                }
-                .glass(theme, shape: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                VStack(alignment: .leading, spacing: 6) {
+                    VStack(spacing: 0) {
+                        SecureField(store.S["newPw"], text: $store.pwNew)
+                            .font(.system(size: 16))
+                            .foregroundStyle(theme.textPrimary)
+                            .padding(.horizontal, 18)
+                            .frame(height: 54)
+                        Separator(theme: theme, inset: 18)
+                        SecureField(store.S["confirmPw"], text: $store.pwConfirm)
+                            .font(.system(size: 16))
+                            .foregroundStyle(theme.textPrimary)
+                            .padding(.horizontal, 18)
+                            .frame(height: 54)
+                    }
+                    .glass(theme, shape: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                if store.pwError {
-                    Text(store.S["pwMismatch"])
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(theme.destructive)
-                        .padding(.horizontal, 6)
+                    FieldError(message: store.pwError ? store.S["pwMismatch"] : "", theme: theme)
                 }
 
                 PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {

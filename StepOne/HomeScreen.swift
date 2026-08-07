@@ -8,14 +8,18 @@
 
 import SwiftUI
 
-private enum DragAxis { case horizontal, vertical }
-
 struct HomeScreen: View {
     @Bindable var store: StepOneStore
 
     @State private var dragAxis: DragAxis?
 
     private var theme: StepOneTheme { store.theme }
+
+    /// Fixed so the toast can be placed in the gap under the card instead of
+    /// being pinned to the bottom of the stage, where it clipped the card.
+    private static let toastHeight: CGFloat = 34
+    /// Clear space kept between the card's bottom edge and the toast.
+    private static let toastGap: CGFloat = 20
 
     var body: some View {
         ZStack {
@@ -59,7 +63,7 @@ struct HomeScreen: View {
             .buttonStyle(PressStyle(scale: 0.94))
         }
         .padding(.horizontal, 20)
-        .padding(.top, 74)
+        .padding(.top, 56)
         .padding(.bottom, 4)
     }
 
@@ -68,7 +72,10 @@ struct HomeScreen: View {
     private var cardStage: some View {
         GeometryReader { geo in
             let centerX = geo.size.width / 2
-            let cardY = geo.size.height / 2 + 24
+            // The stage grew when the header tightened and the footer dropped;
+            // half of each shift is added back here so the deck stays put.
+            let cardY = geo.size.height / 2 + 27
+            let cardBottom = cardY + TripCardView.size.height / 2
 
             ZStack {
                 Button { store.screen = .journey } label: {
@@ -80,7 +87,7 @@ struct HomeScreen: View {
                         .glassCapsule(theme)
                 }
                 .buttonStyle(PressStyle())
-                .position(x: centerX, y: max(40, cardY - TripCardView.size.height / 2 - 62))
+                .position(x: centerX, y: max(40, cardY - TripCardView.size.height / 2 - 48))
 
                 if store.trips.isEmpty {
                     emptyDeckMessage
@@ -93,22 +100,26 @@ struct HomeScreen: View {
                 }
 
                 if let toast = store.toast {
-                    VStack {
-                        Spacer()
-                        Text(toast)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(theme.textPrimary)
-                            .padding(.horizontal, 17)
-                            .padding(.vertical, 9)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .background(theme.toastTint, in: Capsule())
-                            .overlay(Capsule().strokeBorder(theme.toastBorder, lineWidth: 0.5))
-                            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
-                            .padding(.bottom, 4)
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .allowsHitTesting(false)
+                    Text(toast)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.textPrimary)
+                        .padding(.horizontal, 17)
+                        .frame(height: Self.toastHeight)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(theme.toastTint, in: Capsule())
+                        .overlay(Capsule().strokeBorder(theme.toastBorder, lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+                        .transition(.opacity.combined(with: .offset(y: 10)))
+                        // Sits in the gap under the deck; the clamp keeps it on
+                        // stage if a short screen leaves no gap to sit in.
+                        .position(
+                            x: centerX,
+                            y: min(
+                                geo.size.height + 6,
+                                cardBottom + Self.toastGap + Self.toastHeight / 2
+                            )
+                        )
+                        .allowsHitTesting(false)
                 }
 
                 if let reward = store.reward {
@@ -203,7 +214,7 @@ struct HomeScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 6)
-        .padding(.bottom, 44)
+        .padding(.bottom, 32)
     }
 
     // MARK: Menu

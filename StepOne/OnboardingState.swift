@@ -22,10 +22,14 @@ final class OnboardingState {
 
     // Demo card stack
     var remaining: [OnboardingCard] = []
-    var position = 1
+    var position = 0
+    var dragX: CGFloat = 0
     var dragY: CGFloat = 0
     var isDragging = false
     var flying: Int?
+    /// Set while a sideways cycle is animating, so drags are ignored until the
+    /// deck has settled on the next card.
+    var sliding = false
     var entering = true
     var earnedMeters = 0
 
@@ -58,9 +62,23 @@ final class OnboardingState {
     var loginOrigin: OnboardingStep = .welcome
 
     private var sequence: Task<Void, Never>?
+    /// Kept apart from `sequence` so a sideways cycle cannot cancel the
+    /// step sequence that is driving the rest of onboarding.
+    private var slideTask: Task<Void, Never>?
 
     var cards: [OnboardingCard] {
         remaining.isEmpty && step != .demo ? StepOneContent.shared.onboardingCards : remaining
+    }
+
+    /// The last card has nothing to cycle to, so sideways swipes stop there.
+    var canCycle: Bool { cards.count > 1 }
+
+    /// Wraps an index onto the deck so the neighbours either side of the top
+    /// card keep coming round, the way the home deck does.
+    func wrapped(_ index: Int) -> Int {
+        let count = cards.count
+        guard count > 0 else { return 0 }
+        return ((index % count) + count) % count
     }
 
     func cancel() {
@@ -154,13 +172,17 @@ final class OnboardingState {
 
     func startDemo() {
         remaining = StepOneContent.shared.onboardingCards
-        position = 1
+        position = 0
+        dragX = 0
         dragY = 0
         flying = nil
+        sliding = false
         entering = true
-        step = .demo
         phase = 0
+        // The greeting rides the same curve on its way out, so the tutorial
+        // arrives on a clear screen.
         withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.85)) {
+            step = .demo
             greetingDocked = true
         }
         run([
@@ -171,8 +193,28 @@ final class OnboardingState {
         ])
     }
 
+    /// Sends the deck one card sideways, then re-seats it without animating so
+    /// the new top card is already in place — the home deck's `slide`.
+    func slideDemo(_ direction: Int, slot: CGFloat) {
+        guard flying == nil, !sliding, !isDragging, canCycle else { return }
+        sliding = true
+        withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.42)) {
+            dragX = -CGFloat(direction) * slot
+        }
+        slideTask?.cancel()
+        slideTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(430))
+            guard !Task.isCancelled, let self else { return }
+            self.position = self.wrapped(self.position + direction)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { self.dragX = 0 }
+            self.sliding = false
+        }
+    }
+
     func swipeDemo(up: Bool) {
-        guard flying == nil, let card = cards[safe: position] else { return }
+        guard flying == nil, !sliding, let card = cards[safe: wrapped(position)] else { return }
         flying = up ? -1 : 1
         isDragging = false
         withAnimation(.easeOut(duration: 0.36)) { dragY = up ? -950 : 950 }
@@ -181,10 +223,14 @@ final class OnboardingState {
         run([
             (360, { [weak self] in
                 guard let self else { return }
+                let at = self.wrapped(self.position)
                 var ids = self.remaining
-                if ids.indices.contains(self.position) { ids.remove(at: self.position) }
+                if ids.indices.contains(at) { ids.remove(at: at) }
                 self.remaining = ids
-                self.position = min(self.position, max(0, ids.count - 1))
+                // The card that followed has shifted into `at`, so it becomes
+                // the new top card — or the deck wraps back to the start.
+                self.position = ids.isEmpty ? 0 : ((at % ids.count) + ids.count) % ids.count
+                self.dragX = 0
                 self.dragY = 0
                 self.flying = nil
                 self.earnedMeters += earned
@@ -276,7 +322,9 @@ final class OnboardingState {
     var hintOpacity: Double { (step == .demo && phase >= 1) ? 1 : 0 }
     var reward1Opacity: Double { (step == .reward && phase >= 1 && phase < 3) ? 1 : 0 }
     var reward2Opacity: Double { (step == .reward && phase >= 2 && phase < 3) ? 1 : 0 }
-    var greetingOpacity: Double { ((step == .greet && phase >= 1) || step == .demo) ? 1 : 0 }
+    /// The greeting belongs to its own step only; the demo step is the
+    /// tutorial and keeps the screen to itself.
+    var greetingOpacity: Double { (step == .greet && phase >= 1) ? 1 : 0 }
 
     func greetingLine(part: DayPart) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
