@@ -11,6 +11,16 @@ import FirebaseAuth
 import FirebaseCore
 import Foundation
 
+/// How to prove the session is fresh enough for a destructive change.
+/// Firebase refuses these on a stale login, and the proof differs by how the
+/// account was made.
+enum ReauthMethod {
+    case password(String)
+    /// `authorizationCode` is what lets Firebase revoke the Apple token on
+    /// delete — App Review requires that of anything offering Apple sign-in.
+    case apple(idToken: String, rawNonce: String, authorizationCode: String?)
+}
+
 // MARK: - Contract
 
 protocol AuthServicing {
@@ -25,6 +35,7 @@ protocol AuthServicing {
 
     func signUp(email: String, password: String, displayName: String?) async throws -> AuthUser
     func signIn(email: String, password: String) async throws -> AuthUser
+    func signInWithApple(idToken: String, rawNonce: String, fullName: PersonNameComponents?) async throws -> AuthUser
     func signOut() throws
 
     func sendEmailVerification() async throws
@@ -35,7 +46,7 @@ protocol AuthServicing {
     func updatePassword(current: String, to newPassword: String) async throws
     func sendEmailChange(to newEmail: String, currentPassword: String) async throws
     func updateDisplayName(_ name: String) async throws -> AuthUser
-    func deleteAccount(currentPassword: String) async throws
+    func deleteAccount(reauthenticatingWith method: ReauthMethod) async throws
 
     @discardableResult
     func observeAuthState(_ onChange: @escaping @MainActor (AuthUser?) -> Void) -> AuthStateObservation
@@ -128,6 +139,41 @@ final class FirebaseAuthService: AuthServicing {
                 withEmail: email.normalizedEmail,
                 password: password
             )
+            return AuthUser(result.user)
+        }
+    }
+
+    /// Signs in with the identity token Apple just issued. `rawNonce` must be
+    /// the value whose hash went out on the request, or Firebase rejects it.
+    func signInWithApple(
+        idToken: String,
+        rawNonce: String,
+        fullName: PersonNameComponents?
+    ) async throws -> AuthUser {
+        let auth = try requireAuth()
+        return try await mapping {
+            let credential = OAuthProvider.appleCredential(
+                withIDToken: idToken,
+                rawNonce: rawNonce,
+                fullName: fullName
+            )
+            let result = try await auth.signIn(with: credential)
+
+            // Apple sends the name on the very first authorisation only, so if
+            // it arrived and the profile is still blank this is the one chance
+            // to keep it. Revoking and re-authorising is the user's only way
+            // back to this moment.
+            if (result.user.displayName ?? "").isEmpty, let fullName {
+                let formatted = PersonNameComponentsFormatter.localizedString(
+                    from: fullName,
+                    style: .default
+                )
+                if !formatted.isEmpty {
+                    let change = result.user.createProfileChangeRequest()
+                    change.displayName = formatted
+                    try await change.commitChanges()
+                }
+            }
             return AuthUser(result.user)
         }
     }
@@ -233,10 +279,32 @@ final class FirebaseAuthService: AuthServicing {
 
     /// Deletes the Firebase account only. Anything you later store keyed on
     /// the `uid` has to be removed alongside this.
-    func deleteAccount(currentPassword: String) async throws {
+    func deleteAccount(reauthenticatingWith method: ReauthMethod) async throws {
         let user = try requireUser()
         try await mapping {
-            try await reauthenticate(user, password: currentPassword)
+            switch method {
+            case .password(let password):
+                try await reauthenticate(user, password: password)
+
+            case .apple(let idToken, let rawNonce, let authorizationCode):
+                let credential = OAuthProvider.appleCredential(
+                    withIDToken: idToken,
+                    rawNonce: rawNonce,
+                    fullName: nil
+                )
+                _ = try await user.reauthenticate(with: credential)
+                if let authorizationCode {
+                    // Hands the Apple ID back — without it the app keeps
+                    // showing under the user's "Sign in with Apple" settings
+                    // long after the account is gone.
+                    //
+                    // Best effort on purpose: Firebase can only revoke once
+                    // the Apple provider is fully configured (Services ID and
+                    // key), and a failure there must not leave someone unable
+                    // to delete an account they have asked to be rid of.
+                    try? await auth.revokeToken(withAuthorizationCode: authorizationCode)
+                }
+            }
             try await user.delete()
         }
     }
@@ -316,7 +384,8 @@ private extension AuthUser {
             id: user.uid,
             email: user.email,
             displayName: user.displayName,
-            isEmailVerified: user.isEmailVerified
+            isEmailVerified: user.isEmailVerified,
+            providerIDs: user.providerData.map(\.providerID)
         )
     }
 }

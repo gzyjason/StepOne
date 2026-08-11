@@ -146,17 +146,29 @@ struct AccountScreen: View {
                     store.nameError = ""
                     store.screen = .changeName
                 }
-                secondaryButton(store.S["changeEmail"]) {
-                    store.emailStage = .form
-                    store.emailNew = ""
-                    store.emailPassword = ""
-                    store.emailErrNew = ""
-                    store.emailErrPassword = ""
-                    store.resendSeconds = 0
-                    store.screen = .changeEmail
+                // Changing the address means reauthenticating with a password
+                // and mailing a link — neither of which an Apple account has.
+                if store.usesPassword {
+                    secondaryButton(store.S["changeEmail"]) {
+                        store.emailStage = .form
+                        store.emailNew = ""
+                        store.emailPassword = ""
+                        store.emailErrNew = ""
+                        store.emailErrPassword = ""
+                        store.resendSeconds = 0
+                        store.screen = .changeEmail
+                    }
                 }
             }
             .padding(.top, 4)
+
+            if !store.usesPassword {
+                Text("Your email is managed by your Apple ID.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.hint)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+            }
         }
     }
 
@@ -176,20 +188,23 @@ struct AccountScreen: View {
         VStack(alignment: .leading, spacing: 7) {
             SectionLabel(text: store.S["security"], theme: theme)
             VStack(spacing: 0) {
-                Button {
-                    store.pwCurrent = ""
-                    store.pwNew = ""
-                    store.pwConfirm = ""
-                    store.pwErrCurrent = ""
-                    store.pwErrNew = ""
-                    store.pwErrConfirm = ""
-                    store.screen = .password
-                } label: {
-                    SettingsRow(title: store.S["updatePassword"], theme: theme) { Chevron(theme: theme) }
-                }
-                .buttonStyle(RowPressStyle())
+                // An Apple account has no password of ours to update.
+                if store.usesPassword {
+                    Button {
+                        store.pwCurrent = ""
+                        store.pwNew = ""
+                        store.pwConfirm = ""
+                        store.pwErrCurrent = ""
+                        store.pwErrNew = ""
+                        store.pwErrConfirm = ""
+                        store.screen = .password
+                    } label: {
+                        SettingsRow(title: store.S["updatePassword"], theme: theme) { Chevron(theme: theme) }
+                    }
+                    .buttonStyle(RowPressStyle())
 
-                Separator(theme: theme)
+                    Separator(theme: theme)
+                }
 
                 Button { store.logOut() } label: {
                     SettingsRow(title: "Log out", theme: theme) {
@@ -227,29 +242,42 @@ struct AccountScreen: View {
 
             if store.dangerOpen {
                 VStack(alignment: .leading, spacing: 7) {
-                    // Firebase will not delete an account on a stale login, so
-                    // the password is collected here and used to reauthenticate.
-                    GlassField(
-                        placeholder: "Current password",
-                        text: $store.deletePassword,
-                        theme: theme,
-                        secure: true
-                    )
-                    FieldError(message: store.deleteError, theme: theme)
+                    // Firebase refuses to delete on a stale login, so proof of
+                    // identity is collected first — a password, or a fresh
+                    // Apple authorisation whose code also revokes the token.
+                    if store.usesPassword {
+                        GlassField(
+                            placeholder: store.S["currentPw"],
+                            text: $store.deletePassword,
+                            theme: theme,
+                            secure: true
+                        )
+                        FieldError(message: store.deleteError, theme: theme)
 
-                    Button { store.alertOpen = true } label: {
-                        HStack {
-                            Text("Delete account")
-                                .font(.system(size: 15.5, weight: .medium))
-                                .foregroundStyle(theme.destructive)
-                            Spacer()
+                        Button { store.alertOpen = true } label: {
+                            HStack {
+                                Text("Delete account")
+                                    .font(.system(size: 15.5, weight: .medium))
+                                    .foregroundStyle(theme.destructive)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .frame(height: 52)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 16)
-                        .frame(height: 52)
-                        .contentShape(Rectangle())
+                        .buttonStyle(RowPressStyle())
+                        .glassCard(theme)
+                    } else {
+                        Text("Confirm with Apple to delete your account. This also revokes StepOne's access to your Apple ID.")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(theme.textSecondary)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 2)
+
+                        AppleReauthButton(store: store)
+                        FieldError(message: store.deleteError, theme: theme)
                     }
-                    .buttonStyle(RowPressStyle())
-                    .glassCard(theme)
 
                     Text("Deleting your account permanently removes your profile and all of Your Journey.")
                         .font(.system(size: 12))
@@ -320,6 +348,11 @@ private struct RegistrationPanel: View {
             }
             .padding(.top, 4)
 
+            OrDivider(theme: theme)
+
+            AppleSignInButton(store: store)
+            FieldError(message: store.appleError, theme: theme)
+
             linkButton("Log in to existing account") {
                 store.rgStage = .login
                 store.rgLoginError = ""
@@ -350,6 +383,11 @@ private struct RegistrationPanel: View {
                 store.rgLogin()
             }
             .padding(.top, 4)
+
+            OrDivider(theme: theme)
+
+            AppleSignInButton(store: store)
+            FieldError(message: store.appleError, theme: theme)
 
             linkButton("Register a new account") {
                 store.rgStage = .form

@@ -39,6 +39,9 @@ final class AuthSession {
     private let service: AuthServicing
     private var observation: AuthStateObservation?
     private var verificationWatch: Task<Void, Never>?
+    /// Held between issuing the Apple request and the identity token coming
+    /// back; Firebase needs it to match the hash Apple signed.
+    private var appleRawNonce: String?
 
     init(service: AuthServicing = FirebaseAuthService()) {
         self.service = service
@@ -102,6 +105,34 @@ final class AuthSession {
     func logIn(email: String, password: String) async -> Bool {
         await perform {
             let user = try await self.service.signIn(email: email, password: password)
+            self.apply(user)
+        }
+    }
+
+    // MARK: Sign in with Apple
+
+    /// Call from the button's request handler. Mints a nonce, keeps the raw
+    /// value, and returns the hash for Apple to sign.
+    func appleRequestNonce() -> String {
+        let nonce = AppleNonce.make()
+        appleRawNonce = nonce.raw
+        return nonce.hashed
+    }
+
+    /// `fullName` is only non-nil on a user's very first authorisation.
+    @discardableResult
+    func signInWithApple(idToken: String, fullName: PersonNameComponents?) async -> Bool {
+        guard let rawNonce = appleRawNonce else {
+            error = .appleTokenMissing
+            return false
+        }
+        return await perform {
+            let user = try await self.service.signInWithApple(
+                idToken: idToken,
+                rawNonce: rawNonce,
+                fullName: fullName
+            )
+            self.appleRawNonce = nil
             self.apply(user)
         }
     }
@@ -204,8 +235,28 @@ final class AuthSession {
 
     @discardableResult
     func deleteAccount(currentPassword: String) async -> Bool {
+        await deleteAccount(reauthenticatingWith: .password(currentPassword))
+    }
+
+    /// Apple-account variant. `authorizationCode` comes from the same fresh
+    /// authorisation and is what revokes the Apple token.
+    @discardableResult
+    func deleteAccountWithApple(idToken: String, authorizationCode: String?) async -> Bool {
+        guard let rawNonce = appleRawNonce else {
+            error = .appleTokenMissing
+            return false
+        }
+        return await deleteAccount(reauthenticatingWith: .apple(
+            idToken: idToken,
+            rawNonce: rawNonce,
+            authorizationCode: authorizationCode
+        ))
+    }
+
+    private func deleteAccount(reauthenticatingWith method: ReauthMethod) async -> Bool {
         await perform {
-            try await self.service.deleteAccount(currentPassword: currentPassword)
+            try await self.service.deleteAccount(reauthenticatingWith: method)
+            self.appleRawNonce = nil
             self.setState(.signedOut)
         }
     }
@@ -217,7 +268,12 @@ final class AuthSession {
             setState(.signedOut)
             return
         }
-        setState(user.isEmailVerified ? .signedIn(user) : .awaitingVerification(user))
+        // Only password accounts wait on the email link. Apple has already
+        // vouched for the address, and a private-relay one has no inbox we
+        // could send a link to — gating on `isEmailVerified` alone would
+        // strand every Apple user on the "check your inbox" screen forever.
+        let confirmed = user.isEmailVerified || !user.usesPassword
+        setState(confirmed ? .signedIn(user) : .awaitingVerification(user))
     }
 
     private func setState(_ next: State) {

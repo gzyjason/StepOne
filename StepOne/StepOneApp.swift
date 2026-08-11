@@ -11,10 +11,10 @@ import SwiftUI
 @main
 struct StepOneApp: App {
     init() {
-        // No `GoogleService-Info.plist` is checked in, and `configure()` traps
-        // without one. Guarding it means the app still runs on the demo flows
-        // until the real plist is dropped into the StepOne folder, at which
-        // point Firebase switches itself on.
+        // `configure()` traps when the plist is missing. It is checked in, so
+        // this normally always runs — the guard is for a checkout that has
+        // deliberately dropped it, which then degrades to `.notConfigured`
+        // errors rather than crashing on launch.
         if Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist") != nil {
             FirebaseApp.configure()
         }

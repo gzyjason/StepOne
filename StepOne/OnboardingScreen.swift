@@ -456,6 +456,11 @@ struct OnboardingScreen: View {
                     }
                     .padding(.top, 4)
 
+                    OrDivider(theme: theme)
+
+                    AppleSignInButton(store: store) { store.finishOnboarding() }
+                    FieldError(message: store.appleError, theme: theme)
+
                     Button { ob.toLogin(from: .register) } label: {
                         Text("Log in to existing account")
                             .font(.system(size: 14, weight: .medium))
@@ -655,6 +660,11 @@ struct OnboardingScreen: View {
                         login()
                     }
                     .padding(.top, 4)
+
+                    OrDivider(theme: theme)
+
+                    AppleSignInButton(store: store) { store.finishOnboarding() }
+                    FieldError(message: store.appleError, theme: theme)
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 32)

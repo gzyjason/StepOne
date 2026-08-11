@@ -5,6 +5,7 @@
 //  App state and behaviour, ported from the design's Component class.
 //
 
+import AuthenticationServices
 import SwiftUI
 
 // MARK: - Navigation
@@ -43,6 +44,7 @@ enum BusyAction: String, Equatable {
     case rgRegister, rgVerify, rgLogin
     case logout, delete
     case changeEmail, changePassword, changeName
+    case apple
 }
 
 // MARK: - Store
@@ -142,6 +144,8 @@ final class StepOneStore {
     var rgLoginError = ""
     var rgLoginEmptyEmail = false
     var rgLoginEmptyPw = false
+    /// Shared by every Sign in with Apple button — only one is ever on screen.
+    var appleError = ""
 
     var onboarding = OnboardingState()
 
@@ -176,6 +180,10 @@ final class StepOneStore {
     /// account that exists but has not confirmed its address still reads as
     /// signed out, so Account keeps offering the registration panel.
     var isRegistered: Bool { auth.isSignedIn }
+
+    /// Apple-only accounts have no password to change and no address we
+    /// control, so the screens that assume one are hidden for them.
+    var usesPassword: Bool { auth.user?.usesPassword ?? false }
 
     var displayName: String { name ?? "friend" }
     var displayEmail: String { email ?? "" }
@@ -656,6 +664,73 @@ final class StepOneStore {
         }
     }
 
+    // MARK: Sign in with Apple
+
+    /// Apple hands back an authorisation; this turns it into a Firebase
+    /// session. `onSignedIn` lets onboarding move on once it lands.
+    func completeAppleSignIn(
+        _ result: Result<ASAuthorization, Error>,
+        onSignedIn: @escaping () -> Void = {}
+    ) {
+        switch result {
+        case .failure(let failure):
+            // Backing out is a decision, not a failure — say nothing.
+            guard (failure as? ASAuthorizationError)?.code != .canceled else { return }
+            appleError = "Could not sign in with Apple. Try again"
+
+        case .success(let authorization):
+            guard let tokens = authorization.appleTokens else {
+                appleError = AuthError.appleTokenMissing.message
+                return
+            }
+            appleError = ""
+            runAuth(.apple) { [weak self] in
+                guard let self else { return }
+                let ok = await self.auth.signInWithApple(
+                    idToken: tokens.idToken,
+                    fullName: tokens.fullName
+                )
+                guard ok else {
+                    self.appleError = self.auth.errorMessage ?? ""
+                    return
+                }
+                self.restoreProgress(for: self.auth.user?.email)
+                self.rgStage = .form
+                onSignedIn()
+            }
+        }
+    }
+
+    /// Deleting an Apple account needs a fresh authorisation rather than a
+    /// password, and the code it carries is what revokes the Apple token.
+    func completeAppleDelete(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .failure(let failure):
+            guard (failure as? ASAuthorizationError)?.code != .canceled else { return }
+            deleteError = "Could not confirm with Apple. Try again"
+
+        case .success(let authorization):
+            guard let tokens = authorization.appleTokens else {
+                deleteError = AuthError.appleTokenMissing.message
+                return
+            }
+            deleteError = ""
+            runAuth(.delete) { [weak self] in
+                guard let self else { return }
+                let deleted = await self.auth.deleteAccountWithApple(
+                    idToken: tokens.idToken,
+                    authorizationCode: tokens.authorizationCode
+                )
+                self.alertOpen = false
+                guard deleted else {
+                    self.deleteError = self.auth.errorMessage ?? ""
+                    return
+                }
+                self.finishAccountDeletion()
+            }
+        }
+    }
+
     /// Moves to the waiting panel, starts the resend cooldown and begins
     /// polling so the screen advances the moment the link is opened.
     private func beginVerificationWait() {
@@ -743,17 +818,23 @@ final class StepOneStore {
                 self.deleteError = self.auth.errorMessage ?? ""
                 return
             }
-            self.resendTask?.cancel()
-            self.auth.stopWatchingForVerification()
-            self.sessionStash = nil
-            self.clearAccountState()
-            self.rgStage = .form
-            self.rgEmail = ""
-            self.rgLoginEmail = ""
-            self.rgLoginPw = ""
-            self.rgLoginError = ""
-            self.screen = .settings
+            self.finishAccountDeletion()
         }
+    }
+
+    /// Shared by both delete paths so the password and Apple routes cannot
+    /// drift apart in what they tear down.
+    private func finishAccountDeletion() {
+        resendTask?.cancel()
+        auth.stopWatchingForVerification()
+        sessionStash = nil
+        clearAccountState()
+        rgStage = .form
+        rgEmail = ""
+        rgLoginEmail = ""
+        rgLoginPw = ""
+        rgLoginError = ""
+        screen = .settings
     }
 
     /// Everything that belongs to the signed-in account, reset in one place so
@@ -788,6 +869,7 @@ final class StepOneStore {
         rgErrPw2 = ""
         rgErrGeneral = ""
         rgErrVerify = ""
+        appleError = ""
     }
 
     // MARK: Onboarding completion

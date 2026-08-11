@@ -12,6 +12,11 @@ import Foundation
 enum AuthError: Error, Equatable {
     case invalidEmail
     case emailAlreadyInUse
+    /// The address already has an account made by a different route, so the
+    /// user needs to be pointed at the one they actually signed up with.
+    case accountExistsWithDifferentProvider
+    /// Apple returned an authorization with no identity token in it.
+    case appleTokenMissing
     case weakPassword
     /// Wrong password, unknown address, or a malformed credential. Projects
     /// with email enumeration protection on — the default for new ones —
@@ -42,6 +47,10 @@ enum AuthError: Error, Equatable {
             return "Enter a valid email address"
         case .emailAlreadyInUse:
             return "That email address is already registered"
+        case .accountExistsWithDifferentProvider:
+            return "That email is already registered — log in with your password"
+        case .appleTokenMissing:
+            return "Apple did not return a sign-in token. Try again"
         case .weakPassword:
             return "Use 8 or more characters with a number and a letter"
         case .invalidCredentials:
@@ -98,8 +107,10 @@ enum AuthError: Error, Equatable {
         switch code {
         case .invalidEmail, .invalidRecipientEmail, .missingEmail:
             self = .invalidEmail
-        case .emailAlreadyInUse, .credentialAlreadyInUse, .accountExistsWithDifferentCredential:
+        case .emailAlreadyInUse, .credentialAlreadyInUse:
             self = .emailAlreadyInUse
+        case .accountExistsWithDifferentCredential:
+            self = .accountExistsWithDifferentProvider
         case .weakPassword:
             self = .weakPassword
         case .wrongPassword, .userNotFound, .invalidCredential, .userMismatch:

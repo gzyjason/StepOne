@@ -504,6 +504,23 @@ struct FieldError: View {
     }
 }
 
+/// Hairline rule with a centred "or", separating a form from the federated
+/// sign-in beneath it.
+struct OrDivider: View {
+    let theme: StepOneTheme
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(theme.sepThin).frame(height: 0.5)
+            Text("or")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(theme.hint)
+            Rectangle().fill(theme.sepThin).frame(height: 0.5)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 // MARK: - Alert
 
 /// The design's centred glass alert with two footer actions.

@@ -16,4 +16,12 @@ struct AuthUser: Equatable, Identifiable, Sendable {
     let email: String?
     let displayName: String?
     let isEmailVerified: Bool
+    /// Firebase's provider identifiers — "password", "apple.com", and so on.
+    let providerIDs: [String]
+
+    /// Only a password account goes through email verification. A federated
+    /// provider has already vouched for the address it hands over, and there
+    /// is no inbox for us to send a link to in the private-relay case.
+    var usesPassword: Bool { providerIDs.contains("password") }
+    var usesApple: Bool { providerIDs.contains("apple.com") }
 }
