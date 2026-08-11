@@ -15,18 +15,22 @@ enum Screen: Equatable {
     case changeName, changeEmail, password
 }
 
-enum VerifyStage: Equatable { case intro, code, newValue }
-enum RegisterStage: Equatable { case form, code, login }
+/// Firebase confirms an email change by link, so the flow is one form and then
+/// a "we have sent it" panel — there is no code to key in.
+enum VerifyStage: Equatable { case form, sent }
+enum RegisterStage: Equatable { case form, verify, login }
 
 struct DiscardRef: Equatable, Hashable {
     let category: String
     let index: Int
 }
 
+/// Progress is local to the device — none of it lives in Firebase yet — so
+/// logging out parks it here and logging back into the same address picks it
+/// up again. No password: Firebase owns credentials now.
 struct SessionStash {
     var name: String
     var email: String
-    var password: String
     var meters: Int
     var discarded: [DiscardRef]
     var done: Int
@@ -38,6 +42,7 @@ enum BusyAction: String, Equatable {
     case register, verify, login, resend
     case rgRegister, rgVerify, rgLogin
     case logout, delete
+    case changeEmail, changePassword, changeName
 }
 
 // MARK: - Store
@@ -78,11 +83,10 @@ final class StepOneStore {
     var stepNotif = true
     var promoNotif = false
 
-    // Account
+    // Account. Identity is mirrored from `auth` — Firebase is the source of
+    // truth — while everything below it stays on the device.
     var name: String?
     var email: String?
-    var registered: Bool?
-    var accountPassword = ""
     var sessionStash: SessionStash?
 
     // Navigation & chrome
@@ -100,36 +104,56 @@ final class StepOneStore {
     var dragCategory: String?
     var dragOffset: CGFloat = 0
 
-    // Change name / email / password
+    // Change name / email / password. Both changes are credentialed, so each
+    // form carries the current password for Firebase's reauthentication.
     var nameDraft: String?
     var nameDiscardOpen = false
-    var emailStage: VerifyStage = .intro
-    var emailCode = ""
+    var nameError = ""
+    var emailStage: VerifyStage = .form
     var emailNew = ""
-    var pwStage: VerifyStage = .intro
-    var pwCode = ""
+    var emailPassword = ""
+    var emailErrNew = ""
+    var emailErrPassword = ""
+    var pwCurrent = ""
     var pwNew = ""
     var pwConfirm = ""
-    var pwError = false
+    var pwErrCurrent = ""
+    var pwErrNew = ""
+    var pwErrConfirm = ""
     var resendSeconds = 0
+
+    // Delete account. Also credentialed, so the danger zone collects the
+    // password before the confirmation alert opens.
+    var deletePassword = ""
+    var deleteError = ""
 
     // In-app registration (shown on Account when signed out)
     var rgStage: RegisterStage = .form
     var rgEmail = ""
     var rgPw = ""
     var rgPw2 = ""
-    var rgCode = ""
     var rgErrEmail = ""
     var rgErrPw = ""
     var rgErrPw2 = ""
-    var rgErrCode = ""
+    var rgErrGeneral = ""
+    var rgErrVerify = ""
     var rgLoginEmail = ""
     var rgLoginPw = ""
-    var rgLoginError = false
+    var rgLoginError = ""
     var rgLoginEmptyEmail = false
     var rgLoginEmptyPw = false
 
     var onboarding = OnboardingState()
+
+    /// Firebase Authentication. Owned here rather than injected into the view
+    /// tree so the store can mirror identity the moment it changes.
+    let auth: AuthSession
+
+    init(auth: AuthSession = AuthSession()) {
+        self.auth = auth
+        auth.onChange = { [weak self] state in self?.applyAuthState(state) }
+        auth.start()
+    }
 
     private var slideTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -148,10 +172,28 @@ final class StepOneStore {
     var isNight: Bool { nightOverride ?? false }
     var theme: StepOneTheme { .of(night: isNight) }
     var S: Strings { Strings(lang: lang, content: content) }
-    var isRegistered: Bool { registered ?? true }
+    /// Registered means Firebase has a *verified* account signed in. An
+    /// account that exists but has not confirmed its address still reads as
+    /// signed out, so Account keeps offering the registration panel.
+    var isRegistered: Bool { auth.isSignedIn }
 
-    var displayName: String { name ?? "Alex" }
-    var displayEmail: String { email ?? "alex@example.com" }
+    var displayName: String { name ?? "friend" }
+    var displayEmail: String { email ?? "" }
+
+    /// Mirrors Firebase's copy of the profile into the fields the screens
+    /// already read. Progress is deliberately untouched — logging in and out
+    /// is handled where the stash rules live.
+    private func applyAuthState(_ state: AuthSession.State) {
+        switch state {
+        case .loading, .signedOut:
+            break
+        case .awaitingVerification(let user), .signedIn(let user):
+            if let displayName = user.displayName, !displayName.isEmpty {
+                name = displayName
+            }
+            email = user.email
+        }
+    }
 
     var trips: [TripSpec] { trips(for: category) }
 
@@ -402,36 +444,115 @@ final class StepOneStore {
 
     func confirmName() {
         let draft = (nameDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !draft.isEmpty { name = draft }
-        screen = .account
         nameDiscardOpen = false
+        guard !draft.isEmpty else {
+            nameError = "Enter a name"
+            return
+        }
+        nameError = ""
+
+        runAuth(.changeName) { [weak self] in
+            guard let self else { return }
+            // Signed out, the name is just the local greeting from onboarding
+            // and there is no Firebase profile to push it to.
+            guard self.isRegistered else {
+                self.name = draft
+                self.screen = .account
+                return
+            }
+            guard await self.auth.changeName(to: draft) else {
+                self.nameError = self.auth.errorMessage ?? ""
+                return
+            }
+            self.name = draft
+            self.screen = .account
+        }
+    }
+
+    // MARK: Change email
+
+    /// Firebase sends the confirmation link to the *new* address and only
+    /// swaps it over once that link is opened, so this ends on a "sent" panel
+    /// rather than on a changed address.
+    func sendEmailChange() {
+        let newEmail = emailNew.trimmingCharacters(in: .whitespacesAndNewlines)
+        let emailOk = Self.isValidEmail(newEmail)
+
+        emailErrNew = emailOk ? "" : "Enter a valid email address"
+        emailErrPassword = emailPassword.isEmpty ? "Enter your current password" : ""
+        guard emailOk, !emailPassword.isEmpty else { return }
+
+        runAuth(.changeEmail) { [weak self] in
+            guard let self else { return }
+            let sent = await self.auth.changeEmail(
+                to: newEmail,
+                currentPassword: self.emailPassword
+            )
+            guard sent else {
+                switch self.auth.error {
+                case .invalidCredentials, .requiresRecentLogin:
+                    self.emailErrPassword = self.auth.errorMessage ?? ""
+                default:
+                    self.emailErrNew = self.auth.errorMessage ?? ""
+                }
+                return
+            }
+            self.emailPassword = ""
+            self.emailStage = .sent
+        }
     }
 
     // MARK: Change password
 
     func confirmPassword() {
-        if !pwNew.isEmpty && pwNew == pwConfirm {
-            screen = .account
-            pwStage = .intro
-            accountPassword = pwNew
-        } else {
-            pwError = true
+        let newOk = Self.isValidPassword(pwNew)
+        let matchOk = !pwConfirm.isEmpty && pwConfirm == pwNew
+
+        pwErrCurrent = pwCurrent.isEmpty ? "Enter your current password" : ""
+        pwErrNew = newOk ? "" : "Use 8 or more characters with a number and a letter"
+        pwErrConfirm = matchOk ? "" : S["pwMismatch"]
+        guard !pwCurrent.isEmpty, newOk, matchOk else { return }
+
+        runAuth(.changePassword) { [weak self] in
+            guard let self else { return }
+            let changed = await self.auth.changePassword(current: self.pwCurrent, to: self.pwNew)
+            guard changed else {
+                switch self.auth.error {
+                case .invalidCredentials, .requiresRecentLogin:
+                    self.pwErrCurrent = self.auth.errorMessage ?? ""
+                default:
+                    self.pwErrNew = self.auth.errorMessage ?? ""
+                }
+                return
+            }
+            self.pwCurrent = ""
+            self.pwNew = ""
+            self.pwConfirm = ""
+            self.screen = .account
+            self.showToast("Password updated")
         }
     }
 
     // MARK: Busy helper
 
-    /// Runs `work` after a short delay while showing a spinner, mirroring the
-    /// design's simulated network calls.
-    func runBusy(_ action: BusyAction, milliseconds: Int = 950, _ work: @escaping () -> Void) {
+    /// Runs one auth call with the spinner up. The spinner clears when the
+    /// call actually returns, rather than after the design's fixed delay.
+    func runAuth(_ action: BusyAction, _ work: @escaping () async -> Void) {
         guard busy == nil else { return }
         busy = action
         busyTask?.cancel()
         busyTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            guard !Task.isCancelled, let self else { return }
-            self.busy = nil
-            work()
+            await work()
+            self?.busy = nil
+        }
+    }
+
+    /// Shared by every screen that can ask for the verification email again.
+    func resendVerification(_ action: BusyAction) {
+        guard resendSeconds == 0 else { return }
+        runAuth(action) { [weak self] in
+            guard let self else { return }
+            if await self.auth.resendVerification() { self.startResend() }
         }
     }
 
@@ -450,7 +571,6 @@ final class StepOneStore {
     // MARK: In-app registration
 
     func rgRegister() {
-        guard busy == nil else { return }
         let em = rgEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         let emailOk = Self.isValidEmail(em)
         let pwOk = Self.isValidPassword(rgPw)
@@ -459,156 +579,226 @@ final class StepOneStore {
         rgErrEmail = emailOk ? "" : "Enter a valid email address"
         rgErrPw = pwOk ? "" : "Use 8 or more characters with a number and a letter"
         rgErrPw2 = matchOk ? "" : "Passwords do not match"
+        rgErrGeneral = ""
 
         guard emailOk, pwOk, matchOk else { return }
-        runBusy(.rgRegister, milliseconds: 1100) { [weak self] in
+        runAuth(.rgRegister) { [weak self] in
             guard let self else { return }
-            self.rgStage = .code
-            self.rgCode = ""
-            self.rgErrCode = ""
-            self.startResend()
+            let created = await self.auth.register(
+                email: em,
+                password: self.rgPw,
+                name: self.name
+            )
+            guard created else {
+                self.placeRegisterError()
+                return
+            }
+            self.beginVerificationWait()
         }
     }
 
-    func rgVerify() {
-        guard busy == nil else { return }
-        runBusy(.rgVerify) { [weak self] in
+    /// Manual "I have confirmed it" check, for when the background watch has
+    /// timed out or the app was backgrounded.
+    func rgCheckVerification() {
+        runAuth(.rgVerify) { [weak self] in
             guard let self else { return }
-            if self.rgCode.trimmingCharacters(in: .whitespaces) == "123456" {
-                self.resendTask?.cancel()
-                self.registered = true
-                self.email = self.rgEmail.trimmingCharacters(in: .whitespacesAndNewlines)
-                self.accountPassword = self.rgPw
-                self.journeyBaseOverride = self.content.journeyBase
-                self.rgStage = .form
-                self.rgPw = ""
-                self.rgPw2 = ""
-                self.rgCode = ""
-                self.resendSeconds = 0
+            if await self.auth.checkVerification() {
+                self.completeRegistration()
             } else {
-                self.rgErrCode = "That code is not correct"
+                self.rgErrVerify = self.auth.errorMessage
+                    ?? "Not confirmed yet — open the link in your email"
             }
         }
     }
 
+    /// Settles the app once the address is confirmed. Called both by the
+    /// manual check and by the background watch finishing on its own.
+    func completeRegistration() {
+        resendTask?.cancel()
+        resendSeconds = 0
+        journeyBaseOverride = content.journeyBase
+        rgStage = .form
+        rgPw = ""
+        rgPw2 = ""
+        rgErrVerify = ""
+        rgErrGeneral = ""
+    }
+
     func rgLogin() {
-        guard busy == nil else { return }
         let em = rgLoginEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !em.isEmpty, !rgLoginPw.isEmpty else {
             rgLoginEmptyEmail = em.isEmpty
             rgLoginEmptyPw = rgLoginPw.isEmpty
-            rgLoginError = false
+            rgLoginError = ""
             return
         }
         rgLoginEmptyEmail = false
         rgLoginEmptyPw = false
+        rgLoginError = ""
 
-        runBusy(.rgLogin, milliseconds: 1100) { [weak self] in
+        runAuth(.rgLogin) { [weak self] in
             guard let self else { return }
-            let entered = em.lowercased()
-            if let stash = self.sessionStash,
-               entered == stash.email.lowercased(), self.rgLoginPw == stash.password {
-                self.registered = true
-                self.name = stash.name
-                self.email = stash.email
-                self.accountPassword = stash.password
-                self.meters = stash.meters
-                self.discarded = stash.discarded
-                self.done = stash.done
-                self.journeyBaseOverride = stash.journeyBase
-                self.sessionStash = nil
-                self.rgStage = .form
-                self.rgLoginPw = ""
-            } else if entered == "alex@example.com", self.rgLoginPw == "stepone123" {
-                self.registered = true
-                self.name = "Alex"
-                self.email = "alex@example.com"
-                self.accountPassword = "stepone123"
-                self.journeyBaseOverride = self.content.journeyBase
-                self.sessionStash = nil
-                self.rgStage = .form
-                self.rgLoginPw = ""
-            } else {
-                self.rgLoginError = true
+            guard await self.auth.logIn(email: em, password: self.rgLoginPw) else {
+                self.rgLoginError = self.auth.errorMessage ?? ""
+                return
             }
+            self.rgLoginPw = ""
+
+            // The account exists but has never confirmed its address, so it
+            // lands on the same waiting panel a fresh sign-up does.
+            guard !self.auth.needsVerification else {
+                self.rgEmail = em
+                self.beginVerificationWait()
+                return
+            }
+            self.restoreProgress(for: self.auth.user?.email)
+            self.rgStage = .form
         }
+    }
+
+    /// Moves to the waiting panel, starts the resend cooldown and begins
+    /// polling so the screen advances the moment the link is opened.
+    private func beginVerificationWait() {
+        rgStage = .verify
+        rgErrVerify = ""
+        rgPw = ""
+        rgPw2 = ""
+        startResend()
+        auth.watchForVerification()
+    }
+
+    /// Puts an auth failure on the field it belongs to, so a rejected sign-up
+    /// reads the way a validation error does.
+    private func placeRegisterError() {
+        let message = auth.errorMessage ?? ""
+        switch auth.error {
+        case .invalidEmail, .emailAlreadyInUse:
+            rgErrEmail = message
+        case .weakPassword:
+            rgErrPw = message
+        default:
+            rgErrGeneral = message
+        }
+    }
+
+    /// Local progress belongs to whoever was last signed in on this device, so
+    /// it only comes back for the same address.
+    private func restoreProgress(for email: String?) {
+        guard let email, let stash = sessionStash,
+              stash.email.caseInsensitiveCompare(email) == .orderedSame else {
+            journeyBaseOverride = content.journeyBase
+            return
+        }
+        name = stash.name
+        meters = stash.meters
+        discarded = stash.discarded
+        done = stash.done
+        journeyBaseOverride = stash.journeyBase
+        sessionStash = nil
     }
 
     // MARK: Account actions
 
     func logOut() {
-        guard busy == nil else { return }
-        runBusy(.logout) { [weak self] in
+        runAuth(.logout) { [weak self] in
             guard let self else { return }
-            self.resendTask?.cancel()
-            self.sessionStash = SessionStash(
+            // Read the identity off before signing out — `displayEmail` is a
+            // mirror of the session and empties as soon as it clears.
+            let stash = SessionStash(
                 name: self.displayName,
                 email: self.displayEmail,
-                password: self.accountPassword.isEmpty ? "stepone123" : self.accountPassword,
                 meters: self.meters,
                 discarded: self.discarded,
                 done: self.done,
                 journeyBase: self.journeyBaseOverride ?? self.content.journeyBase
             )
-            self.registered = false
-            self.name = "friend"
-            self.email = nil
-            self.accountPassword = ""
-            self.meters = 0
-            self.discarded = []
-            self.done = 0
-            self.journeyBaseOverride = 0
-            self.openMilestones = []
-            self.openPhases = [:]
-            self.resendSeconds = 0
+            guard self.auth.logOut() else { return }
+
+            self.resendTask?.cancel()
+            self.auth.stopWatchingForVerification()
+            self.sessionStash = stash
+            self.clearAccountState()
             self.rgStage = .login
             self.rgLoginEmail = ""
             self.rgLoginPw = ""
-            self.rgLoginError = false
+            self.rgLoginError = ""
             self.rgLoginEmptyEmail = false
             self.rgLoginEmptyPw = false
         }
     }
 
+    /// Deletes the Firebase account. Reauthentication is required, so the
+    /// danger zone collects the password before the alert opens.
     func deleteAccount() {
-        guard busy == nil else { return }
-        runBusy(.delete, milliseconds: 1100) { [weak self] in
+        guard !deletePassword.isEmpty else {
+            alertOpen = false
+            deleteError = "Enter your password to confirm"
+            return
+        }
+        runAuth(.delete) { [weak self] in
             guard let self else { return }
-            self.resendTask?.cancel()
+            let deleted = await self.auth.deleteAccount(currentPassword: self.deletePassword)
             self.alertOpen = false
-            self.registered = false
-            self.name = "friend"
-            self.email = nil
-            self.meters = 0
-            self.discarded = []
-            self.done = 0
-            self.journeyBaseOverride = 0
-            self.accountPassword = ""
+            guard deleted else {
+                self.deleteError = self.auth.errorMessage ?? ""
+                return
+            }
+            self.resendTask?.cancel()
+            self.auth.stopWatchingForVerification()
             self.sessionStash = nil
-            self.openMilestones = []
-            self.openPhases = [:]
-            self.resendSeconds = 0
+            self.clearAccountState()
             self.rgStage = .form
             self.rgEmail = ""
-            self.rgPw = ""
-            self.rgPw2 = ""
-            self.rgCode = ""
-            self.rgErrEmail = ""
-            self.rgErrPw = ""
-            self.rgErrPw2 = ""
-            self.rgErrCode = ""
             self.rgLoginEmail = ""
             self.rgLoginPw = ""
-            self.rgLoginError = false
+            self.rgLoginError = ""
             self.screen = .settings
         }
     }
 
+    /// Everything that belongs to the signed-in account, reset in one place so
+    /// log out and delete cannot drift apart.
+    private func clearAccountState() {
+        name = "friend"
+        email = nil
+        meters = 0
+        discarded = []
+        done = 0
+        journeyBaseOverride = 0
+        openMilestones = []
+        openPhases = [:]
+        resendSeconds = 0
+        deletePassword = ""
+        deleteError = ""
+        emailStage = .form
+        emailNew = ""
+        emailPassword = ""
+        emailErrNew = ""
+        emailErrPassword = ""
+        pwCurrent = ""
+        pwNew = ""
+        pwConfirm = ""
+        pwErrCurrent = ""
+        pwErrNew = ""
+        pwErrConfirm = ""
+        rgPw = ""
+        rgPw2 = ""
+        rgErrEmail = ""
+        rgErrPw = ""
+        rgErrPw2 = ""
+        rgErrGeneral = ""
+        rgErrVerify = ""
+    }
+
     // MARK: Onboarding completion
 
-    func finishOnboarding(name overrideName: String? = nil, email overrideEmail: String? = nil, registered isRegistered: Bool?) {
+    /// Registration state is no longer passed in — `isRegistered` reads it
+    /// straight off the Firebase session, so skipping and completing sign-up
+    /// both land here unchanged.
+    func finishOnboarding(name overrideName: String? = nil, email overrideEmail: String? = nil) {
         onboarding.cancel()
         resendTask?.cancel()
+        auth.stopWatchingForVerification()
 
         let picked = onboarding.types.isEmpty ? chosen : onboarding.types
         let nextCategory = picked.contains(category) ? category : (picked.first ?? category)
@@ -618,14 +808,14 @@ final class StepOneStore {
         onboarding.checkVisible = false
         resendSeconds = 0
 
-        if let isRegistered { registered = isRegistered }
-        if isRegistered == true, !onboarding.password.isEmpty { accountPassword = onboarding.password }
-
+        // Firebase's copy wins when there is one: it survives reinstalls, and
+        // a returning log-in carries the name the account was made with.
         let trimmedName = onboarding.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        name = overrideName ?? (trimmedName.isEmpty ? "friend" : trimmedName)
+        let firebaseName = auth.user?.displayName.flatMap { $0.isEmpty ? nil : $0 }
+        name = overrideName ?? firebaseName ?? (trimmedName.isEmpty ? "friend" : trimmedName)
 
         let trimmedEmail = onboarding.email.trimmingCharacters(in: .whitespacesAndNewlines)
-        email = overrideEmail ?? (trimmedEmail.isEmpty ? email : trimmedEmail)
+        email = overrideEmail ?? auth.user?.email ?? (trimmedEmail.isEmpty ? email : trimmedEmail)
 
         chosen = picked
         category = nextCategory

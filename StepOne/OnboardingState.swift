@@ -50,13 +50,18 @@ final class OnboardingState {
     var errEmail = ""
     var errPassword = ""
     var errPasswordConfirm = ""
-    var code = ""
-    var codeError = ""
+    /// Failures that belong to no single field — no connection, project not
+    /// set up, too many attempts.
+    var errGeneral = ""
+    /// Shown on the waiting screen when a manual check comes back unconfirmed.
+    var verifyError = ""
 
     // Login
     var loginEmail = ""
     var loginPassword = ""
-    var loginError = false
+    /// Carries Firebase's message rather than a flag: a disabled account and a
+    /// wrong password are different things to say.
+    var loginError = ""
     var loginEmptyEmail = false
     var loginEmptyPassword = false
     var loginOrigin: OnboardingStep = .welcome
@@ -275,7 +280,7 @@ final class OnboardingState {
 
     func toLogin(from origin: OnboardingStep) {
         loginOrigin = origin
-        loginError = false
+        loginError = ""
         withAnimation(.easeOut(duration: 0.24)) {
             step = .login
             phase = 1
@@ -283,7 +288,7 @@ final class OnboardingState {
     }
 
     func loginBack() {
-        loginError = false
+        loginError = ""
         loginEmptyEmail = false
         loginEmptyPassword = false
         withAnimation(.easeOut(duration: 0.24)) {
@@ -298,7 +303,7 @@ final class OnboardingState {
     }
 
     func verifyBack() {
-        codeError = ""
+        verifyError = ""
         withAnimation(.easeOut(duration: 0.24)) {
             step = .register
             phase = 1
@@ -306,8 +311,8 @@ final class OnboardingState {
     }
 
     func toVerify() {
-        code = ""
-        codeError = ""
+        verifyError = ""
+        errGeneral = ""
         withAnimation(.easeOut(duration: 0.24)) {
             step = .verify
             phase = 1

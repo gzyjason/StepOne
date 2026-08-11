@@ -143,12 +143,15 @@ struct AccountScreen: View {
                 secondaryButton(store.S["changeName"]) {
                     store.nameDraft = store.displayName
                     store.nameDiscardOpen = false
+                    store.nameError = ""
                     store.screen = .changeName
                 }
                 secondaryButton(store.S["changeEmail"]) {
-                    store.emailStage = .intro
-                    store.emailCode = ""
+                    store.emailStage = .form
                     store.emailNew = ""
+                    store.emailPassword = ""
+                    store.emailErrNew = ""
+                    store.emailErrPassword = ""
                     store.resendSeconds = 0
                     store.screen = .changeEmail
                 }
@@ -174,12 +177,12 @@ struct AccountScreen: View {
             SectionLabel(text: store.S["security"], theme: theme)
             VStack(spacing: 0) {
                 Button {
-                    store.pwStage = .intro
+                    store.pwCurrent = ""
                     store.pwNew = ""
                     store.pwConfirm = ""
-                    store.pwCode = ""
-                    store.pwError = false
-                    store.resendSeconds = 0
+                    store.pwErrCurrent = ""
+                    store.pwErrNew = ""
+                    store.pwErrConfirm = ""
                     store.screen = .password
                 } label: {
                     SettingsRow(title: store.S["updatePassword"], theme: theme) { Chevron(theme: theme) }
@@ -224,6 +227,16 @@ struct AccountScreen: View {
 
             if store.dangerOpen {
                 VStack(alignment: .leading, spacing: 7) {
+                    // Firebase will not delete an account on a stale login, so
+                    // the password is collected here and used to reauthenticate.
+                    GlassField(
+                        placeholder: "Current password",
+                        text: $store.deletePassword,
+                        theme: theme,
+                        secure: true
+                    )
+                    FieldError(message: store.deleteError, theme: theme)
+
                     Button { store.alertOpen = true } label: {
                         HStack {
                             Text("Delete account")
@@ -262,10 +275,15 @@ private struct RegistrationPanel: View {
             switch store.rgStage {
             case .form: registerForm
             case .login: loginForm
-            case .code: codeForm
+            case .verify: verifyPanel
             }
         }
         .padding(.horizontal, 4)
+        // The background poll flips this once the link is opened, which swaps
+        // this whole panel out for the signed-in account view.
+        .onChange(of: store.auth.isSignedIn) { _, signedIn in
+            if signedIn, store.rgStage == .verify { store.completeRegistration() }
+        }
     }
 
     private var registerForm: some View {
@@ -295,6 +313,8 @@ private struct RegistrationPanel: View {
                 FieldError(message: store.rgErrPw2, theme: theme)
             }
 
+            FieldError(message: store.rgErrGeneral, theme: theme)
+
             PrimaryButton(title: "Register", theme: theme, busy: store.busy == .rgRegister) {
                 store.rgRegister()
             }
@@ -302,7 +322,7 @@ private struct RegistrationPanel: View {
 
             linkButton("Log in to existing account") {
                 store.rgStage = .login
-                store.rgLoginError = false
+                store.rgLoginError = ""
                 store.rgLoginEmptyEmail = false
                 store.rgLoginEmptyPw = false
             }
@@ -333,35 +353,32 @@ private struct RegistrationPanel: View {
 
             linkButton("Register a new account") {
                 store.rgStage = .form
-                store.rgErrCode = ""
-                store.rgLoginError = false
+                store.rgErrGeneral = ""
+                store.rgLoginError = ""
             }
-
-            demoHint("demo account alex@example.com / stepone123")
         }
     }
 
-    private var codeForm: some View {
+    private var verifyPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("A verification code has been sent to \(codeTarget).")
+            Text("We've sent a confirmation link to \(verifyTarget). Open it, and this panel updates by itself.")
                 .font(.system(size: 14.5))
                 .foregroundStyle(theme.textSecondary)
                 .lineSpacing(3)
                 .padding(.horizontal, 6)
 
-            VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Verification code", text: $store.rgCode, theme: theme, keyboard: .numberPad, tracking: 2)
-                FieldError(message: store.rgErrCode, theme: theme)
-            }
+            FieldError(message: store.rgErrVerify, theme: theme)
 
-            PrimaryButton(title: store.S["confirm"], theme: theme, busy: store.busy == .rgVerify) {
-                store.rgVerify()
+            PrimaryButton(title: "I've opened the link", theme: theme, busy: store.busy == .rgVerify) {
+                store.rgCheckVerification()
             }
             .padding(.top, 4)
 
+            ResendButton(store: store, action: .resend)
+
             Button {
                 store.rgStage = .form
-                store.rgErrCode = ""
+                store.rgErrVerify = ""
             } label: {
                 Text("Edit email address")
                     .font(.system(size: 13.5, weight: .medium))
@@ -370,8 +387,6 @@ private struct RegistrationPanel: View {
                     .frame(height: 44)
             }
             .buttonStyle(PressStyle(scale: 1))
-
-            demoHint("demo code 123456")
         }
     }
 
@@ -379,10 +394,10 @@ private struct RegistrationPanel: View {
     /// clears one before setting the other — so they share a single reserved row.
     private var loginPasswordError: String {
         if store.rgLoginEmptyPw { return "Enter your password" }
-        return store.rgLoginError ? "email or password is incorrect" : ""
+        return store.rgLoginError
     }
 
-    private var codeTarget: String {
+    private var verifyTarget: String {
         let trimmed = store.rgEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "your email address" : trimmed
     }
@@ -396,14 +411,6 @@ private struct RegistrationPanel: View {
                 .frame(height: 46)
         }
         .buttonStyle(PressStyle(scale: 1))
-    }
-
-    private func demoHint(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(theme.hint)
-            .frame(maxWidth: .infinity)
-            .padding(.top, -8)
     }
 }
 
@@ -612,7 +619,14 @@ struct ChangeNameScreen: View {
                 theme: theme,
                 height: 54
             )
-            PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {
+            FieldError(message: store.nameError, theme: theme)
+            PrimaryButton(
+                title: store.S["confirm"],
+                theme: theme,
+                busy: store.busy == .changeName,
+                height: 52,
+                radius: 16
+            ) {
                 store.confirmName()
             }
         }
@@ -633,7 +647,7 @@ struct ChangeEmailScreen: View {
             onBack: { store.screen = .account }
         ) {
             switch store.emailStage {
-            case .intro:
+            case .form:
                 Text(store.S["emailIntro"])
                     .font(.system(size: 14.5))
                     .foregroundStyle(theme.textSecondary)
@@ -650,41 +664,51 @@ struct ChangeEmailScreen: View {
                 .frame(height: 54)
                 .glass(theme, shape: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                PrimaryButton(title: store.S["sendVerify"], theme: theme, height: 52, radius: 16) {
-                    store.emailStage = .code
-                    store.emailCode = ""
-                    store.startResend()
+                VStack(alignment: .leading, spacing: 6) {
+                    GlassField(
+                        placeholder: store.S["newEmail"],
+                        text: $store.emailNew,
+                        theme: theme,
+                        keyboard: .emailAddress,
+                        height: 54
+                    )
+                    FieldError(message: store.emailErrNew, theme: theme)
                 }
 
-            case .code:
-                Text(store.S("codeSent", "e", store.displayEmail))
+                VStack(alignment: .leading, spacing: 6) {
+                    GlassField(
+                        placeholder: store.S["currentPw"],
+                        text: $store.emailPassword,
+                        theme: theme,
+                        secure: true,
+                        height: 54
+                    )
+                    FieldError(message: store.emailErrPassword, theme: theme)
+                }
+
+                PrimaryButton(
+                    title: store.S["sendVerify"],
+                    theme: theme,
+                    busy: store.busy == .changeEmail,
+                    height: 52,
+                    radius: 16
+                ) {
+                    store.sendEmailChange()
+                }
+
+            case .sent:
+                Text(store.S("emailLinkSent", "e", store.emailNew.trimmingCharacters(in: .whitespacesAndNewlines)))
                     .font(.system(size: 14.5))
                     .foregroundStyle(theme.textSecondary)
                     .lineSpacing(3)
                     .padding(.horizontal, 6)
 
-                GlassField(placeholder: store.S["code"], text: $store.emailCode, theme: theme, keyboard: .numberPad, height: 54)
-
-                PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {
-                    store.emailStage = .newValue
-                }
-
-                ResendButton(store: store)
-
-            case .newValue:
-                Text(store.S["newEmailPrompt"])
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(theme.textSecondary)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 6)
-
-                GlassField(placeholder: store.S["newEmail"], text: $store.emailNew, theme: theme, keyboard: .emailAddress, height: 54)
-
-                PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {
-                    let trimmed = store.emailNew.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { store.email = trimmed }
+                // No resend here on purpose: re-sending would mean
+                // reauthenticating again, and the password has been cleared.
+                // Going back and refilling the form is the honest path.
+                PrimaryButton(title: store.S["done"], theme: theme, height: 52, radius: 16) {
                     store.screen = .account
-                    store.emailStage = .intro
+                    store.emailStage = .form
                 }
             }
         }
@@ -704,68 +728,51 @@ struct PasswordScreen: View {
             title: store.S["updatePassword"],
             onBack: { store.screen = .account }
         ) {
-            switch store.pwStage {
-            case .intro:
-                Text(store.S["pwIntro"])
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(theme.textSecondary)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 6)
+            Text(store.S["pwIntro"])
+                .font(.system(size: 14.5))
+                .foregroundStyle(theme.textSecondary)
+                .lineSpacing(3)
+                .padding(.horizontal, 6)
 
-                PrimaryButton(title: store.S["sendVerify"], theme: theme, height: 52, radius: 16) {
-                    store.pwStage = .code
-                    store.pwCode = ""
-                    store.pwNew = ""
-                    store.pwConfirm = ""
-                    store.pwError = false
-                    store.startResend()
+            VStack(alignment: .leading, spacing: 6) {
+                GlassField(
+                    placeholder: store.S["currentPw"],
+                    text: $store.pwCurrent,
+                    theme: theme,
+                    secure: true,
+                    height: 54
+                )
+                FieldError(message: store.pwErrCurrent, theme: theme)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                VStack(spacing: 0) {
+                    SecureField(store.S["newPw"], text: $store.pwNew)
+                        .font(.system(size: 16))
+                        .foregroundStyle(theme.textPrimary)
+                        .padding(.horizontal, 18)
+                        .frame(height: 54)
+                    Separator(theme: theme, inset: 18)
+                    SecureField(store.S["confirmPw"], text: $store.pwConfirm)
+                        .font(.system(size: 16))
+                        .foregroundStyle(theme.textPrimary)
+                        .padding(.horizontal, 18)
+                        .frame(height: 54)
                 }
+                .glass(theme, shape: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-            case .code:
-                Text(store.S["codeSentPw"])
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(theme.textSecondary)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 6)
+                FieldError(message: store.pwErrNew, theme: theme)
+                FieldError(message: store.pwErrConfirm, theme: theme)
+            }
 
-                GlassField(placeholder: store.S["code"], text: $store.pwCode, theme: theme, keyboard: .numberPad, height: 54)
-
-                PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {
-                    store.pwStage = .newValue
-                    store.pwError = false
-                }
-
-                ResendButton(store: store)
-
-            case .newValue:
-                Text(store.S["pwNewPrompt"])
-                    .font(.system(size: 14.5))
-                    .foregroundStyle(theme.textSecondary)
-                    .lineSpacing(3)
-                    .padding(.horizontal, 6)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    VStack(spacing: 0) {
-                        SecureField(store.S["newPw"], text: $store.pwNew)
-                            .font(.system(size: 16))
-                            .foregroundStyle(theme.textPrimary)
-                            .padding(.horizontal, 18)
-                            .frame(height: 54)
-                        Separator(theme: theme, inset: 18)
-                        SecureField(store.S["confirmPw"], text: $store.pwConfirm)
-                            .font(.system(size: 16))
-                            .foregroundStyle(theme.textPrimary)
-                            .padding(.horizontal, 18)
-                            .frame(height: 54)
-                    }
-                    .glass(theme, shape: RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                    FieldError(message: store.pwError ? store.S["pwMismatch"] : "", theme: theme)
-                }
-
-                PrimaryButton(title: store.S["confirm"], theme: theme, height: 52, radius: 16) {
-                    store.confirmPassword()
-                }
+            PrimaryButton(
+                title: store.S["confirm"],
+                theme: theme,
+                busy: store.busy == .changePassword,
+                height: 52,
+                radius: 16
+            ) {
+                store.confirmPassword()
             }
         }
     }
@@ -773,19 +780,26 @@ struct PasswordScreen: View {
 
 private struct ResendButton: View {
     @Bindable var store: StepOneStore
+    /// Which slot the spinner belongs to, so two resend buttons on different
+    /// screens never both light up.
+    let action: BusyAction
 
     var body: some View {
         let theme = store.theme
         Button {
-            if store.resendSeconds == 0 { store.startResend() }
+            store.resendVerification(action)
         } label: {
-            Text(store.resendLabel)
-                .font(.system(size: 14.5, weight: .semibold))
-                .foregroundStyle(theme.accent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .glass(theme, shape: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .opacity(store.resendSeconds == 0 ? 1 : 0.4)
+            ZStack {
+                Text(store.resendLabel)
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+                    .opacity(store.busy == action ? 0 : 1)
+                if store.busy == action { Spinner(color: theme.accent, size: 16) }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .glass(theme, shape: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .opacity(store.resendSeconds == 0 ? 1 : 0.4)
         }
         .buttonStyle(PressStyle(scale: 0.98))
         .disabled(store.resendSeconds > 0)

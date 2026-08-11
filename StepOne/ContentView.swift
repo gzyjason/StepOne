@@ -131,7 +131,7 @@ struct ContentView: View {
             } content: {
                 StepAlert(
                     title: "Delete your account?",
-                    message: "This permanently deletes your account, your name and all of Your Journey. This cannot be undone.",
+                    message: "This permanently deletes your Firebase account, your name and all of Your Journey. This cannot be undone.",
                     cancelTitle: store.S["cancel"],
                     confirmTitle: "Delete",
                     theme: theme,

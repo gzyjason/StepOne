@@ -449,6 +449,8 @@ struct OnboardingScreen: View {
                         FieldError(message: ob.errPasswordConfirm, theme: theme)
                     }
 
+                    FieldError(message: ob.errGeneral, theme: theme)
+
                     PrimaryButton(title: "Register", theme: theme, busy: store.busy == .register) {
                         register()
                     }
@@ -463,7 +465,7 @@ struct OnboardingScreen: View {
                     }
                     .buttonStyle(PressStyle(scale: 1))
 
-                    Button { store.finishOnboarding(name: "friend", registered: false) } label: {
+                    Button { store.finishOnboarding(name: "friend") } label: {
                         Text("Skip registration")
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(theme.hint)
@@ -490,11 +492,30 @@ struct OnboardingScreen: View {
         ob.errEmail = emailOk ? "" : "Enter a valid email address"
         ob.errPassword = pwOk ? "" : "Use 8 or more characters with a number and a letter"
         ob.errPasswordConfirm = matchOk ? "" : "Passwords do not match"
+        ob.errGeneral = ""
 
         guard emailOk, pwOk, matchOk else { return }
-        store.runBusy(.register, milliseconds: 1100) {
+        store.runAuth(.register) {
+            let name = ob.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let created = await store.auth.register(
+                email: email,
+                password: ob.password,
+                name: name.isEmpty ? nil : name
+            )
+            guard created else {
+                // Route the failure to the field it came from, so it reads the
+                // way the local validation above does.
+                let message = store.auth.errorMessage ?? ""
+                switch store.auth.error {
+                case .invalidEmail, .emailAlreadyInUse: ob.errEmail = message
+                case .weakPassword: ob.errPassword = message
+                default: ob.errGeneral = message
+                }
+                return
+            }
             ob.toVerify()
             store.startResend()
+            store.auth.watchForVerification()
         }
     }
 
@@ -530,28 +551,23 @@ struct OnboardingScreen: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("A verification code has been sent to \(verifyTarget).")
+                    Text("We've sent a confirmation link to \(verifyTarget). Open it, and this screen moves on by itself.")
                         .font(.system(size: 14.5))
                         .foregroundStyle(theme.textSecondary)
                         .lineSpacing(3)
                         .padding(.horizontal, 6)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Verification code", text: Bindable(ob).code, theme: theme, keyboard: .numberPad, tracking: 2)
-                        FieldError(message: ob.codeError, theme: theme)
-                    }
+                    FieldError(message: ob.verifyError, theme: theme)
 
-                    PrimaryButton(title: "Confirm", theme: theme, busy: store.busy == .verify) {
+                    PrimaryButton(title: "I've opened the link", theme: theme, busy: store.busy == .verify) {
                         verify()
                     }
 
                     Button {
-                        if store.resendSeconds == 0 && store.busy == nil {
-                            store.runBusy(.resend, milliseconds: 800) { store.startResend() }
-                        }
+                        store.resendVerification(.resend)
                     } label: {
                         ZStack {
-                            Text(store.resendSeconds > 0 ? "Resend code in \(store.resendSeconds)s" : "Resend code")
+                            Text(store.resendSeconds > 0 ? "Resend link in \(store.resendSeconds)s" : "Resend link")
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundStyle(theme.accent)
                                 .opacity(store.busy == .resend ? 0 : 1)
@@ -563,11 +579,6 @@ struct OnboardingScreen: View {
                     }
                     .buttonStyle(PressStyle(scale: 1))
                     .disabled(store.resendSeconds > 0)
-
-                    Text("demo code 123456")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(theme.hint)
-                        .frame(maxWidth: .infinity)
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 32)
@@ -575,6 +586,11 @@ struct OnboardingScreen: View {
         }
         .opacity(ob.step == .verify ? 1 : 0)
         .allowsHitTesting(ob.step == .verify)
+        // The background poll flips this the moment the link is opened, so
+        // coming back from the mail app lands straight on Home.
+        .onChange(of: store.auth.isSignedIn) { _, signedIn in
+            if signedIn, ob.step == .verify { store.finishOnboarding() }
+        }
     }
 
     private var verifyTarget: String {
@@ -583,11 +599,12 @@ struct OnboardingScreen: View {
     }
 
     private func verify() {
-        store.runBusy(.verify) {
-            if ob.code.trimmingCharacters(in: .whitespaces) == "123456" {
-                store.finishOnboarding(registered: true)
+        store.runAuth(.verify) {
+            if await store.auth.checkVerification() {
+                store.finishOnboarding()
             } else {
-                ob.codeError = "That code is not correct"
+                ob.verifyError = store.auth.errorMessage
+                    ?? "Not confirmed yet — open the link in your email"
             }
         }
     }
@@ -638,12 +655,6 @@ struct OnboardingScreen: View {
                         login()
                     }
                     .padding(.top, 4)
-
-                    Text("demo account alex@example.com / stepone123")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(theme.hint)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 6)
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 32)
@@ -657,7 +668,7 @@ struct OnboardingScreen: View {
     /// one before setting the other — so they share a single reserved row.
     private var loginPasswordError: String {
         if ob.loginEmptyPassword { return "Enter your password" }
-        return ob.loginError ? "email or password is incorrect" : ""
+        return ob.loginError
     }
 
     private func login() {
@@ -665,22 +676,28 @@ struct OnboardingScreen: View {
         guard !email.isEmpty, !ob.loginPassword.isEmpty else {
             ob.loginEmptyEmail = email.isEmpty
             ob.loginEmptyPassword = ob.loginPassword.isEmpty
-            ob.loginError = false
+            ob.loginError = ""
             return
         }
         ob.loginEmptyEmail = false
         ob.loginEmptyPassword = false
+        ob.loginError = ""
 
-        store.runBusy(.login, milliseconds: 1100) {
-            let entered = email.lowercased()
-            let registeredEmail = ob.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if entered == "alex@example.com", ob.loginPassword == "stepone123" {
-                store.finishOnboarding(name: "Alex", email: "alex@example.com", registered: true)
-            } else if !registeredEmail.isEmpty, entered == registeredEmail, ob.loginPassword == ob.password {
-                store.finishOnboarding(registered: true)
-            } else {
-                ob.loginError = true
+        store.runAuth(.login) {
+            guard await store.auth.logIn(email: email, password: ob.loginPassword) else {
+                ob.loginError = store.auth.errorMessage ?? ""
+                return
             }
+            // An account that was made but never confirmed picks up on the
+            // same waiting screen a new sign-up uses.
+            guard !store.auth.needsVerification else {
+                ob.email = email
+                ob.toVerify()
+                store.startResend()
+                store.auth.watchForVerification()
+                return
+            }
+            store.finishOnboarding()
         }
     }
 
