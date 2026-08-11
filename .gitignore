@@ -1,0 +1,5 @@
+# Firebase config. Not a secret in Google's sense — it ships inside every
+# copy of the app — but this repo is public, and publishing it invites
+# scraped sign-ups against the project while email/password is open.
+# Download it from the Firebase console into StepOne/ to build.
+StepOne/GoogleService-Info.plist
