@@ -268,14 +268,20 @@ struct AccountScreen: View {
                         .buttonStyle(RowPressStyle())
                         .glassCard(theme)
                     } else {
-                        Text("Confirm with Apple to delete your account. This also revokes StepOne's access to your Apple ID.")
+                        Text(store.reauthPrompt)
                             .font(.system(size: 12.5))
                             .foregroundStyle(theme.textSecondary)
                             .lineSpacing(2)
                             .padding(.horizontal, 16)
                             .padding(.bottom, 2)
 
-                        AppleReauthButton(store: store)
+                        // Whichever provider made the account is the only one
+                        // that can prove identity for it.
+                        if store.usesApple {
+                            AppleReauthButton(store: store)
+                        } else {
+                            GoogleReauthButton(store: store)
+                        }
                         FieldError(message: store.deleteError, theme: theme)
                     }
 
@@ -351,7 +357,8 @@ private struct RegistrationPanel: View {
             OrDivider(theme: theme)
 
             AppleSignInButton(store: store)
-            FieldError(message: store.appleError, theme: theme)
+            GoogleAuthButton(store: store)
+            FieldError(message: store.federatedError, theme: theme)
 
             linkButton("Log in to existing account") {
                 store.rgStage = .login
@@ -387,7 +394,8 @@ private struct RegistrationPanel: View {
             OrDivider(theme: theme)
 
             AppleSignInButton(store: store)
-            FieldError(message: store.appleError, theme: theme)
+            GoogleAuthButton(store: store)
+            FieldError(message: store.federatedError, theme: theme)
 
             linkButton("Register a new account") {
                 store.rgStage = .form

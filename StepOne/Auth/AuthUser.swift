@@ -24,4 +24,5 @@ struct AuthUser: Equatable, Identifiable, Sendable {
     /// is no inbox for us to send a link to in the private-relay case.
     var usesPassword: Bool { providerIDs.contains("password") }
     var usesApple: Bool { providerIDs.contains("apple.com") }
+    var usesGoogle: Bool { providerIDs.contains("google.com") }
 }

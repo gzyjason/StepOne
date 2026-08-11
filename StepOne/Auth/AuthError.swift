@@ -17,6 +17,8 @@ enum AuthError: Error, Equatable {
     case accountExistsWithDifferentProvider
     /// Apple returned an authorization with no identity token in it.
     case appleTokenMissing
+    /// Google completed but handed back no ID token.
+    case googleTokenMissing
     case weakPassword
     /// Wrong password, unknown address, or a malformed credential. Projects
     /// with email enumeration protection on — the default for new ones —
@@ -51,6 +53,8 @@ enum AuthError: Error, Equatable {
             return "That email is already registered — log in with your password"
         case .appleTokenMissing:
             return "Apple did not return a sign-in token. Try again"
+        case .googleTokenMissing:
+            return "Google did not return a sign-in token. Try again"
         case .weakPassword:
             return "Use 8 or more characters with a number and a letter"
         case .invalidCredentials:

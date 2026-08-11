@@ -19,6 +19,7 @@ enum ReauthMethod {
     /// `authorizationCode` is what lets Firebase revoke the Apple token on
     /// delete — App Review requires that of anything offering Apple sign-in.
     case apple(idToken: String, rawNonce: String, authorizationCode: String?)
+    case google(idToken: String, accessToken: String)
 }
 
 // MARK: - Contract
@@ -36,6 +37,7 @@ protocol AuthServicing {
     func signUp(email: String, password: String, displayName: String?) async throws -> AuthUser
     func signIn(email: String, password: String) async throws -> AuthUser
     func signInWithApple(idToken: String, rawNonce: String, fullName: PersonNameComponents?) async throws -> AuthUser
+    func signInWithGoogle(idToken: String, accessToken: String) async throws -> AuthUser
     func signOut() throws
 
     func sendEmailVerification() async throws
@@ -178,6 +180,20 @@ final class FirebaseAuthService: AuthServicing {
         }
     }
 
+    /// Google has already verified the address it hands over, so like Apple
+    /// this account never goes near the email-link flow.
+    func signInWithGoogle(idToken: String, accessToken: String) async throws -> AuthUser {
+        let auth = try requireAuth()
+        return try await mapping {
+            let credential = GoogleAuthProvider.credential(
+                withIDToken: idToken,
+                accessToken: accessToken
+            )
+            let result = try await auth.signIn(with: credential)
+            return AuthUser(result.user)
+        }
+    }
+
     func signOut() throws {
         let auth = try requireAuth()
         do {
@@ -304,6 +320,13 @@ final class FirebaseAuthService: AuthServicing {
                     // to delete an account they have asked to be rid of.
                     try? await auth.revokeToken(withAuthorizationCode: authorizationCode)
                 }
+
+            case .google(let idToken, let accessToken):
+                let credential = GoogleAuthProvider.credential(
+                    withIDToken: idToken,
+                    accessToken: accessToken
+                )
+                _ = try await user.reauthenticate(with: credential)
             }
             try await user.delete()
         }

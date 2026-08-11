@@ -459,7 +459,8 @@ struct OnboardingScreen: View {
                     OrDivider(theme: theme)
 
                     AppleSignInButton(store: store) { store.finishOnboarding() }
-                    FieldError(message: store.appleError, theme: theme)
+                    GoogleAuthButton(store: store) { store.finishOnboarding() }
+                    FieldError(message: store.federatedError, theme: theme)
 
                     Button { ob.toLogin(from: .register) } label: {
                         Text("Log in to existing account")
@@ -664,7 +665,8 @@ struct OnboardingScreen: View {
                     OrDivider(theme: theme)
 
                     AppleSignInButton(store: store) { store.finishOnboarding() }
-                    FieldError(message: store.appleError, theme: theme)
+                    GoogleAuthButton(store: store) { store.finishOnboarding() }
+                    FieldError(message: store.federatedError, theme: theme)
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 32)

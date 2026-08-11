@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Google Sign-In redirects back through this scheme, so it has to be
+	     registered here. Everything else in the built Info.plist is still
+	     generated from build settings and merged into this file. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.581032823720-o7lbq91t54nlmhi9lm18gahvs9khiif3</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

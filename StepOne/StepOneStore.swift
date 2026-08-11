@@ -44,7 +44,7 @@ enum BusyAction: String, Equatable {
     case rgRegister, rgVerify, rgLogin
     case logout, delete
     case changeEmail, changePassword, changeName
-    case apple
+    case apple, google
 }
 
 // MARK: - Store
@@ -144,8 +144,9 @@ final class StepOneStore {
     var rgLoginError = ""
     var rgLoginEmptyEmail = false
     var rgLoginEmptyPw = false
-    /// Shared by every Sign in with Apple button — only one is ever on screen.
-    var appleError = ""
+    /// Shared by the Apple and Google buttons. They sit together under one
+    /// reserved row, and only one sign-in can be in flight at a time.
+    var federatedError = ""
 
     var onboarding = OnboardingState()
 
@@ -184,6 +185,15 @@ final class StepOneStore {
     /// Apple-only accounts have no password to change and no address we
     /// control, so the screens that assume one are hidden for them.
     var usesPassword: Bool { auth.user?.usesPassword ?? false }
+    var usesApple: Bool { auth.user?.usesApple ?? false }
+
+    /// Explains which account the delete confirmation will use, and what else
+    /// it hands back.
+    var reauthPrompt: String {
+        usesApple
+            ? "Confirm with Apple to delete your account. This also revokes StepOne's access to your Apple ID."
+            : "Confirm with Google to delete your account. This also removes StepOne from your Google account."
+    }
 
     var displayName: String { name ?? "friend" }
     var displayEmail: String { email ?? "" }
@@ -676,14 +686,14 @@ final class StepOneStore {
         case .failure(let failure):
             // Backing out is a decision, not a failure — say nothing.
             guard (failure as? ASAuthorizationError)?.code != .canceled else { return }
-            appleError = "Could not sign in with Apple. Try again"
+            federatedError = "Could not sign in with Apple. Try again"
 
         case .success(let authorization):
             guard let tokens = authorization.appleTokens else {
-                appleError = AuthError.appleTokenMissing.message
+                federatedError = AuthError.appleTokenMissing.message
                 return
             }
-            appleError = ""
+            federatedError = ""
             runAuth(.apple) { [weak self] in
                 guard let self else { return }
                 let ok = await self.auth.signInWithApple(
@@ -691,12 +701,67 @@ final class StepOneStore {
                     fullName: tokens.fullName
                 )
                 guard ok else {
-                    self.appleError = self.auth.errorMessage ?? ""
+                    self.federatedError = self.auth.errorMessage ?? ""
                     return
                 }
                 self.restoreProgress(for: self.auth.user?.email)
                 self.rgStage = .form
                 onSignedIn()
+            }
+        }
+    }
+
+    // MARK: Sign in with Google
+
+    /// Google's SDK presents its own sheet, so unlike Apple there is no
+    /// request/completion split — the whole exchange happens in one call.
+    func startGoogleSignIn(onSignedIn: @escaping () -> Void = {}) {
+        federatedError = ""
+        runAuth(.google) { [weak self] in
+            guard let self else { return }
+            do {
+                let tokens = try await GoogleSignInFlow.signIn()
+                let ok = await self.auth.signInWithGoogle(
+                    idToken: tokens.idToken,
+                    accessToken: tokens.accessToken
+                )
+                guard ok else {
+                    self.federatedError = self.auth.errorMessage ?? ""
+                    return
+                }
+                self.restoreProgress(for: self.auth.user?.email)
+                self.rgStage = .form
+                onSignedIn()
+            } catch {
+                // Backing out is a decision, not a failure.
+                guard !GoogleSignInFlow.isCancellation(error) else { return }
+                self.federatedError = AuthError(error).message
+            }
+        }
+    }
+
+    func startGoogleDelete() {
+        deleteError = ""
+        runAuth(.delete) { [weak self] in
+            guard let self else { return }
+            do {
+                let tokens = try await GoogleSignInFlow.signIn()
+                let deleted = await self.auth.deleteAccountWithGoogle(
+                    idToken: tokens.idToken,
+                    accessToken: tokens.accessToken
+                )
+                self.alertOpen = false
+                guard deleted else {
+                    self.deleteError = self.auth.errorMessage ?? ""
+                    return
+                }
+                // Hands the Google account back so StepOne stops appearing in
+                // the user's third-party app list.
+                await GoogleSignInFlow.disconnect()
+                self.finishAccountDeletion()
+            } catch {
+                guard !GoogleSignInFlow.isCancellation(error) else { return }
+                self.deleteError = AuthError(error).message
             }
         }
     }
@@ -869,7 +934,7 @@ final class StepOneStore {
         rgErrPw2 = ""
         rgErrGeneral = ""
         rgErrVerify = ""
-        appleError = ""
+        federatedError = ""
     }
 
     // MARK: Onboarding completion

@@ -137,6 +137,27 @@ final class AuthSession {
         }
     }
 
+    // MARK: Sign in with Google
+
+    @discardableResult
+    func signInWithGoogle(idToken: String, accessToken: String) async -> Bool {
+        await perform {
+            let user = try await self.service.signInWithGoogle(
+                idToken: idToken,
+                accessToken: accessToken
+            )
+            self.apply(user)
+        }
+    }
+
+    @discardableResult
+    func deleteAccountWithGoogle(idToken: String, accessToken: String) async -> Bool {
+        await deleteAccount(reauthenticatingWith: .google(
+            idToken: idToken,
+            accessToken: accessToken
+        ))
+    }
+
     @discardableResult
     func logOut() -> Bool {
         error = nil
