@@ -41,19 +41,34 @@ struct OnboardingScreen: View {
     // MARK: Quote
 
     private var quote: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(store.S["obQuote"])
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(theme.textPrimary)
-                .lineSpacing(6)
-            Text(store.S["obQuoteAuthor"])
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(theme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .padding(.top, 22)
+        ZStack {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(store.S["obQuote"])
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
+                    .lineSpacing(6)
+                Text(store.S["obQuoteAuthor"])
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 22)
+            }
+            .padding(.horizontal, 44)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Every other language is machine-translated from the English
+            // copy, so the first screen says so once and then stays quiet.
+            if store.lang != "en" {
+                Text(store.S["aiTranslated"])
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.hint)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 44)
+                    .padding(.bottom, 34)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
         }
-        .padding(.horizontal, 44)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .opacity(ob.quoteOpacity)
         .allowsHitTesting(false)
     }

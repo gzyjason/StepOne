@@ -566,6 +566,13 @@ struct LanguageScreen: View {
                 }
             }
             .glassCard(theme)
+
+            Text(store.S["aiTranslated"])
+                .font(.system(size: 12))
+                .foregroundStyle(theme.hint)
+                .lineSpacing(2)
+                .padding(.horizontal, 16)
+                .padding(.top, -12)
         }
     }
 }
