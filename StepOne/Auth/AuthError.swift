@@ -47,10 +47,14 @@ enum AuthError: Error, Equatable {
         switch self {
         case .invalidEmail:
             return "Enter a valid email address"
+        // Neither names the provider on purpose. Firebase does not say which
+        // one owns the address, and with email enumeration protection on
+        // there is no way to ask — so "registered with Google" would be a
+        // guess, wrong for anyone who signed up with a password or with Apple.
         case .emailAlreadyInUse:
-            return "That email address is already registered"
+            return "This email is already registered — log in instead"
         case .accountExistsWithDifferentProvider:
-            return "That email is already registered — log in with your password"
+            return "This email is registered with a different sign-in"
         case .appleTokenMissing:
             return "Apple did not return a sign-in token. Try again"
         case .googleTokenMissing:
