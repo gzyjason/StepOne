@@ -109,10 +109,25 @@ struct ContentView: View {
         }
     }
 
+    /// Where a screen waits when it is not presented: just past the right
+    /// edge. The distance matters — the slide has a fixed duration, so a
+    /// wrong width would change how fast the panel appears to travel.
+    ///
+    /// `UIScreen.main` is deprecated; the replacement is the screen belonging
+    /// to the scene actually on display, which is also correct on iPad where
+    /// there may be more than one.
+    private var offscreenX: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        // Only reachable before a scene has connected, where any value wide
+        // enough to sit off-screen will do.
+        return (scene?.screen.bounds.width ?? 1024) * 1.03
+    }
+
     @ViewBuilder
     private func slideIn<Content: View>(isPresented: Bool, @ViewBuilder content: () -> Content) -> some View {
         content()
-            .offset(x: isPresented ? 0 : UIScreen.main.bounds.width * 1.03)
+            .offset(x: isPresented ? 0 : offscreenX)
             .animation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.42), value: isPresented)
             .allowsHitTesting(isPresented)
     }
