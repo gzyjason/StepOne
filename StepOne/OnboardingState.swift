@@ -31,6 +31,9 @@ final class OnboardingState {
     /// deck has settled on the next card.
     var sliding = false
     var entering = true
+    /// The opening deal hides the neighbours for a clean reveal. Later
+    /// entries must not, or they would blink out and back on every swipe.
+    var firstDeal = true
     var earnedMeters = 0
 
     // Glass confirmation mask
@@ -70,6 +73,7 @@ final class OnboardingState {
     /// Kept apart from `sequence` so a sideways cycle cannot cancel the
     /// step sequence that is driving the rest of onboarding.
     private var slideTask: Task<Void, Never>?
+    private var entryTask: Task<Void, Never>?
 
     var cards: [OnboardingCard] {
         remaining.isEmpty && step != .demo ? StepOneContent.shared.onboardingCards : remaining
@@ -183,6 +187,7 @@ final class OnboardingState {
         flying = nil
         sliding = false
         entering = true
+        firstDeal = true
         phase = 0
         // The greeting rides the same curve on its way out, so the tutorial
         // arrives on a clear screen.
@@ -192,7 +197,10 @@ final class OnboardingState {
         }
         run([
             (80, { [weak self] in
-                withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.72)) { self?.entering = false }
+                withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.72)) {
+                    self?.entering = false
+                    self?.firstDeal = false
+                }
                 withAnimation(.easeInOut(duration: 0.9)) { self?.phase = 1 }
             }),
         ])
@@ -239,9 +247,31 @@ final class OnboardingState {
                 self.dragY = 0
                 self.flying = nil
                 self.earnedMeters += earned
-                if ids.isEmpty { self.finishDemo() }
+                if ids.isEmpty {
+                    self.finishDemo()
+                } else {
+                    self.beginEntry()
+                }
             }),
         ])
+    }
+
+    /// Parks the new top card below the stage and lets it rise. The pause
+    /// matters: set both values in one turn of the run loop and SwiftUI
+    /// coalesces them, leaving the card to appear without travelling.
+    private func beginEntry() {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { entering = true }
+
+        entryTask?.cancel()
+        entryTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.5)) {
+                self.entering = false
+            }
+        }
     }
 
     private func finishDemo() {

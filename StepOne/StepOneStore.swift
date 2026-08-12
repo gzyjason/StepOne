@@ -73,6 +73,9 @@ final class StepOneStore {
     var isAnimating = false
     var isFading = false
     var suppressAnimation = false
+    /// True while the incoming card is still parked below the stage, so the
+    /// next trip rises into place instead of blinking into it.
+    var entering = false
 
     // Progress
     var meters = 0
@@ -183,6 +186,7 @@ final class StepOneStore {
     private var rewardTask: Task<Void, Never>?
     private var resendTask: Task<Void, Never>?
     private var busyTask: Task<Void, Never>?
+    private var entryTask: Task<Void, Never>?
 
     let slot: CGFloat = 340
 
@@ -363,6 +367,7 @@ final class StepOneStore {
             self.done += 1
             self.relocateCompleted(at: self.wrapped(self.index))
             self.snapBack()
+            self.beginEntry()
             self.isFading = false
             self.isAnimating = false
             self.showToast(self.S("traveled", "d", self.unit.format(self.meters)))
@@ -419,9 +424,32 @@ final class StepOneStore {
             // `position` — or the deck wraps, or it has run out entirely.
             self.index = self.wrapped(position)
             self.snapBack()
+            if !self.trips.isEmpty { self.beginEntry() }
             self.isFading = false
             self.isAnimating = false
             self.showToast(self.S["discardedToast"])
+        }
+    }
+
+    /// How far below the stage an incoming card starts. Matches the drop the
+    /// onboarding deck already uses for its opening card.
+    static let entryDrop: CGFloat = 660
+
+    /// Parks the new top card below the stage and lets it rise. The pause is
+    /// what makes it work: set both values in one turn of the run loop and
+    /// SwiftUI coalesces them, leaving the card to appear without travelling.
+    private func beginEntry() {
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { entering = true }
+
+        entryTask?.cancel()
+        entryTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(30))
+            guard !Task.isCancelled, let self else { return }
+            withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.5)) {
+                self.entering = false
+            }
         }
     }
 
@@ -445,6 +473,8 @@ final class StepOneStore {
 
     func setCategory(_ id: String) {
         guard id != category else { return }
+        entryTask?.cancel()
+        entering = false
         category = id
         index = 0
         drag = .zero

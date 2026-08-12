@@ -150,7 +150,10 @@ struct HomeScreen: View {
             let trip = trips[store.wrapped(store.index + slot)]
             let u = CGFloat(slot) + store.drag.width / store.slot
             let offsetX = u * store.slot
-            let offsetY: CGFloat = slot == 0 ? store.drag.height : 0
+            // Only the incoming card is parked below; its neighbours stay
+            // put, or they would blink out and back on every swipe.
+            let entryOffset: CGFloat = (store.entering && slot == 0) ? StepOneStore.entryDrop : 0
+            let offsetY: CGFloat = (slot == 0 ? store.drag.height : 0) + entryOffset
             let scale = 1 - min(abs(u), 1.4) * 0.06
             let isTop = slot == 0
 

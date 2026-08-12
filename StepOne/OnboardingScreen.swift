@@ -208,7 +208,7 @@ struct OnboardingScreen: View {
     }
 
     private func cardOpacity(isTop: Bool) -> Double {
-        if ob.entering && !isTop { return 0 }
+        if ob.firstDeal && !isTop { return 0 }
         if ob.flying != nil && isTop { return 0 }
         return 1
     }
