@@ -21,7 +21,7 @@ enum Screen: Equatable {
 enum VerifyStage: Equatable { case form, sent }
 enum RegisterStage: Equatable { case form, verify, login }
 
-struct DiscardRef: Equatable, Hashable {
+struct DiscardRef: Codable, Equatable, Hashable {
     let category: String
     let index: Int
 }
@@ -185,8 +185,33 @@ final class StepOneStore {
     init(auth: AuthSession = AuthSession(), progressSync: ProgressSyncing = FirestoreProgressSync()) {
         self.auth = auth
         self.progressSync = progressSync
+
+        // Onboarding has already run on this device — skip straight to Home
+        // rather than replaying the intro. A signed-in Firebase session (if
+        // there is one) reports itself moments later through `auth.start()`
+        // below and mirrors its own identity and Firestore progress over
+        // whatever guest snapshot this restores.
+        if LocalStore.onboardingDone {
+            onboarding.done = true
+            screen = .home
+        }
+        restoreGuestSnapshot()
+
         auth.onChange = { [weak self] state in self?.applyAuthState(state) }
         auth.start()
+    }
+
+    /// A guest's progress lives only on this device, under no uid. Restoring
+    /// it here is harmless even for a returning account: `pullRemoteProgress`
+    /// overwrites it moments later once Firebase reports who is signed in.
+    private func restoreGuestSnapshot() {
+        guard let snapshot = LocalStore.guestSnapshot else { return }
+        name = snapshot.name
+        meters = snapshot.meters
+        done = snapshot.done
+        journeyBaseOverride = snapshot.journeyBase
+        if !snapshot.chosen.isEmpty { chosen = snapshot.chosen }
+        discarded = snapshot.discarded
     }
 
     private var slideTask: Task<Void, Never>?
@@ -303,6 +328,10 @@ final class StepOneStore {
     private func pullRemoteProgress(for uid: String) {
         guard uid != syncedUID else { return }
         syncedUID = uid
+        // A real account is now current on this device, so any leftover
+        // guest cache is obsolete — leaving it would let a future log-out
+        // resurrect stale numbers instead of landing on a clean guest state.
+        LocalStore.guestSnapshot = nil
         Task { [weak self] in
             guard let self else { return }
             guard let remote = try? await self.progressSync.fetch(uid: uid) else { return }
@@ -321,7 +350,10 @@ final class StepOneStore {
     /// back — becomes one write instead of one per action. Best-effort: sync
     /// failures are silent, and the next local change tries again.
     private func scheduleProgressSync() {
-        guard let uid = auth.user?.id else { return }
+        guard let uid = auth.user?.id else {
+            scheduleLocalSave()
+            return
+        }
         progressPushTask?.cancel()
         progressPushTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(800))
@@ -334,6 +366,25 @@ final class StepOneStore {
                 discarded: self.discarded
             )
             try? await self.progressSync.save(snapshot, uid: uid)
+        }
+    }
+
+    /// The guest counterpart to the Firestore branch above — same debounce,
+    /// same shape, but written to `LocalStore` since there is no uid to key a
+    /// remote write on.
+    private func scheduleLocalSave() {
+        progressPushTask?.cancel()
+        progressPushTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled, let self else { return }
+            LocalStore.guestSnapshot = GuestSnapshot(
+                name: self.name,
+                meters: self.meters,
+                done: self.done,
+                journeyBase: self.journeyBaseOverride ?? self.content.journeyBase,
+                chosen: self.chosen,
+                discarded: self.discarded
+            )
         }
     }
 
@@ -1197,6 +1248,7 @@ final class StepOneStore {
         let nextCategory = picked.contains(category) ? category : (picked.first ?? category)
 
         onboarding.done = true
+        LocalStore.onboardingDone = true
         onboarding.maskVisible = false
         onboarding.checkVisible = false
         resendSeconds = 0
