@@ -30,8 +30,6 @@ final class AuthSession {
     /// produced it.
     private(set) var error: AuthError?
 
-    var errorMessage: String? { error?.message }
-
     /// Fired on every transition. Lets an owner that is not a view — the store
     /// — mirror identity without polling or observation tracking.
     var onChange: ((State) -> Void)?

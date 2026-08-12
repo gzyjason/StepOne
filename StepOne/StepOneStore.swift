@@ -205,8 +205,17 @@ final class StepOneStore {
     /// signed out, so Account keeps offering the registration panel.
     var isRegistered: Bool { auth.isSignedIn }
 
-    /// Apple-only accounts have no password to change and no address we
-    /// control, so the screens that assume one are hidden for them.
+    /// The last auth failure in the active language, empty when there was
+    /// none. The session carries the typed error; the language lives here.
+    var authMessage: String {
+        guard let key = auth.error?.key else { return "" }
+        return S[key]
+    }
+
+    func message(_ error: AuthError) -> String { S[error.key] }
+
+    /// Apple- and Google-only accounts have no password to change and no
+    /// address we control, so the screens that assume one are hidden.
     var usesPassword: Bool { auth.user?.usesPassword ?? false }
     var usesApple: Bool { auth.user?.usesApple ?? false }
 
@@ -558,7 +567,7 @@ final class StepOneStore {
         let draft = (nameDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         nameDiscardOpen = false
         guard !draft.isEmpty else {
-            nameError = "Enter a name"
+            nameError = S["errEnterName"]
             return
         }
         nameError = ""
@@ -573,7 +582,7 @@ final class StepOneStore {
                 return
             }
             guard await self.auth.changeName(to: draft) else {
-                self.nameError = self.auth.errorMessage ?? ""
+                self.nameError = self.authMessage
                 return
             }
             self.name = draft
@@ -590,8 +599,8 @@ final class StepOneStore {
         let newEmail = emailNew.trimmingCharacters(in: .whitespacesAndNewlines)
         let emailOk = Self.isValidEmail(newEmail)
 
-        emailErrNew = emailOk ? "" : "Enter a valid email address"
-        emailErrPassword = emailPassword.isEmpty ? "Enter your current password" : ""
+        emailErrNew = emailOk ? "" : S["errEmailInvalid"]
+        emailErrPassword = emailPassword.isEmpty ? S["errCurrentPassword"] : ""
         guard emailOk, !emailPassword.isEmpty else { return }
 
         runAuth(.changeEmail) { [weak self] in
@@ -603,9 +612,9 @@ final class StepOneStore {
             guard sent else {
                 switch self.auth.error {
                 case .invalidCredentials, .requiresRecentLogin:
-                    self.emailErrPassword = self.auth.errorMessage ?? ""
+                    self.emailErrPassword = self.authMessage
                 default:
-                    self.emailErrNew = self.auth.errorMessage ?? ""
+                    self.emailErrNew = self.authMessage
                 }
                 return
             }
@@ -620,8 +629,8 @@ final class StepOneStore {
         let newOk = Self.isValidPassword(pwNew)
         let matchOk = !pwConfirm.isEmpty && pwConfirm == pwNew
 
-        pwErrCurrent = pwCurrent.isEmpty ? "Enter your current password" : ""
-        pwErrNew = newOk ? "" : "Use 8 or more characters with a number and a letter"
+        pwErrCurrent = pwCurrent.isEmpty ? S["errCurrentPassword"] : ""
+        pwErrNew = newOk ? "" : S["errWeakPassword"]
         pwErrConfirm = matchOk ? "" : S["pwMismatch"]
         guard !pwCurrent.isEmpty, newOk, matchOk else { return }
 
@@ -631,9 +640,9 @@ final class StepOneStore {
             guard changed else {
                 switch self.auth.error {
                 case .invalidCredentials, .requiresRecentLogin:
-                    self.pwErrCurrent = self.auth.errorMessage ?? ""
+                    self.pwErrCurrent = self.authMessage
                 default:
-                    self.pwErrNew = self.auth.errorMessage ?? ""
+                    self.pwErrNew = self.authMessage
                 }
                 return
             }
@@ -641,7 +650,7 @@ final class StepOneStore {
             self.pwNew = ""
             self.pwConfirm = ""
             self.screen = .account
-            self.showToast("Password updated")
+            self.showToast(S["toastPasswordUpdated"])
         }
     }
 
@@ -688,9 +697,9 @@ final class StepOneStore {
         let pwOk = Self.isValidPassword(rgPw)
         let matchOk = !rgPw2.isEmpty && rgPw2 == rgPw
 
-        rgErrEmail = emailOk ? "" : "Enter a valid email address"
-        rgErrPw = pwOk ? "" : "Use 8 or more characters with a number and a letter"
-        rgErrPw2 = matchOk ? "" : "Passwords do not match"
+        rgErrEmail = emailOk ? "" : S["errEmailInvalid"]
+        rgErrPw = pwOk ? "" : S["errWeakPassword"]
+        rgErrPw2 = matchOk ? "" : S["errPasswordsDiffer"]
         rgErrGeneral = ""
 
         guard emailOk, pwOk, matchOk else { return }
@@ -717,8 +726,10 @@ final class StepOneStore {
             if await self.auth.checkVerification() {
                 self.completeRegistration()
             } else {
-                self.rgErrVerify = self.auth.errorMessage
-                    ?? "Not confirmed yet — open the link in your email"
+                // No error means the link simply has not been opened yet.
+                self.rgErrVerify = self.authMessage.isEmpty
+                    ? self.S["errNotVerifiedYet"]
+                    : self.authMessage
             }
         }
     }
@@ -751,7 +762,7 @@ final class StepOneStore {
         runAuth(.rgLogin) { [weak self] in
             guard let self else { return }
             guard await self.auth.logIn(email: em, password: self.rgLoginPw) else {
-                self.rgLoginError = self.auth.errorMessage ?? ""
+                self.rgLoginError = self.authMessage
                 return
             }
             self.rgLoginPw = ""
@@ -780,11 +791,11 @@ final class StepOneStore {
         case .failure(let failure):
             // Backing out is a decision, not a failure — say nothing.
             guard (failure as? ASAuthorizationError)?.code != .canceled else { return }
-            federatedError = "Could not sign in with Apple. Try again"
+            federatedError = S["errAppleFailed"]
 
         case .success(let authorization):
             guard let tokens = authorization.appleTokens else {
-                federatedError = AuthError.appleTokenMissing.message
+                federatedError = self.message(.appleTokenMissing)
                 return
             }
             federatedError = ""
@@ -795,7 +806,7 @@ final class StepOneStore {
                     fullName: tokens.fullName
                 )
                 guard ok else {
-                    self.federatedError = self.auth.errorMessage ?? ""
+                    self.federatedError = self.authMessage
                     return
                 }
                 self.restoreProgress(for: self.auth.user?.email)
@@ -820,7 +831,7 @@ final class StepOneStore {
                     accessToken: tokens.accessToken
                 )
                 guard ok else {
-                    self.federatedError = self.auth.errorMessage ?? ""
+                    self.federatedError = self.authMessage
                     return
                 }
                 self.restoreProgress(for: self.auth.user?.email)
@@ -829,7 +840,7 @@ final class StepOneStore {
             } catch {
                 // Backing out is a decision, not a failure.
                 guard !GoogleSignInFlow.isCancellation(error) else { return }
-                self.federatedError = AuthError(error).message
+                self.federatedError = self.message(AuthError(error))
             }
         }
     }
@@ -846,7 +857,7 @@ final class StepOneStore {
                 )
                 self.alertOpen = false
                 guard deleted else {
-                    self.deleteError = self.auth.errorMessage ?? ""
+                    self.deleteError = self.authMessage
                     return
                 }
                 // Hands the Google account back so StepOne stops appearing in
@@ -855,7 +866,7 @@ final class StepOneStore {
                 self.finishAccountDeletion()
             } catch {
                 guard !GoogleSignInFlow.isCancellation(error) else { return }
-                self.deleteError = AuthError(error).message
+                self.deleteError = self.message(AuthError(error))
             }
         }
     }
@@ -866,11 +877,11 @@ final class StepOneStore {
         switch result {
         case .failure(let failure):
             guard (failure as? ASAuthorizationError)?.code != .canceled else { return }
-            deleteError = "Could not confirm with Apple. Try again"
+            deleteError = S["errAppleConfirm"]
 
         case .success(let authorization):
             guard let tokens = authorization.appleTokens else {
-                deleteError = AuthError.appleTokenMissing.message
+                deleteError = self.message(.appleTokenMissing)
                 return
             }
             deleteError = ""
@@ -882,7 +893,7 @@ final class StepOneStore {
                 )
                 self.alertOpen = false
                 guard deleted else {
-                    self.deleteError = self.auth.errorMessage ?? ""
+                    self.deleteError = self.authMessage
                     return
                 }
                 self.finishAccountDeletion()
@@ -904,7 +915,7 @@ final class StepOneStore {
     /// Puts an auth failure on the field it belongs to, so a rejected sign-up
     /// reads the way a validation error does.
     private func placeRegisterError() {
-        let message = auth.errorMessage ?? ""
+        let message = authMessage
         switch auth.error {
         case .invalidEmail, .emailAlreadyInUse:
             rgErrEmail = message
@@ -966,7 +977,7 @@ final class StepOneStore {
     func deleteAccount() {
         guard !deletePassword.isEmpty else {
             alertOpen = false
-            deleteError = "Enter your password to confirm"
+            deleteError = S["errDeletePassword"]
             return
         }
         runAuth(.delete) { [weak self] in
@@ -974,7 +985,7 @@ final class StepOneStore {
             let deleted = await self.auth.deleteAccount(currentPassword: self.deletePassword)
             self.alertOpen = false
             guard deleted else {
-                self.deleteError = self.auth.errorMessage ?? ""
+                self.deleteError = self.authMessage
                 return
             }
             self.finishAccountDeletion()

@@ -495,9 +495,9 @@ struct OnboardingScreen: View {
         let pwOk = StepOneStore.isValidPassword(ob.password)
         let matchOk = !ob.passwordConfirm.isEmpty && ob.passwordConfirm == ob.password
 
-        ob.errEmail = emailOk ? "" : "Enter a valid email address"
-        ob.errPassword = pwOk ? "" : "Use 8 or more characters with a number and a letter"
-        ob.errPasswordConfirm = matchOk ? "" : "Passwords do not match"
+        ob.errEmail = emailOk ? "" : store.S["errEmailInvalid"]
+        ob.errPassword = pwOk ? "" : store.S["errWeakPassword"]
+        ob.errPasswordConfirm = matchOk ? "" : store.S["errPasswordsDiffer"]
         ob.errGeneral = ""
 
         guard emailOk, pwOk, matchOk else { return }
@@ -511,7 +511,7 @@ struct OnboardingScreen: View {
             guard created else {
                 // Route the failure to the field it came from, so it reads the
                 // way the local validation above does.
-                let message = store.auth.errorMessage ?? ""
+                let message = store.authMessage
                 switch store.auth.error {
                 case .invalidEmail, .emailAlreadyInUse: ob.errEmail = message
                 case .weakPassword: ob.errPassword = message
@@ -609,8 +609,10 @@ struct OnboardingScreen: View {
             if await store.auth.checkVerification() {
                 store.finishOnboarding()
             } else {
-                ob.verifyError = store.auth.errorMessage
-                    ?? "Not confirmed yet — open the link in your email"
+                // No error means the link simply has not been opened yet.
+                ob.verifyError = store.authMessage.isEmpty
+                    ? store.S["errNotVerifiedYet"]
+                    : store.authMessage
             }
         }
     }
@@ -649,7 +651,7 @@ struct OnboardingScreen: View {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
                         GlassField(placeholder: "Email address", text: Bindable(ob).loginEmail, theme: theme, keyboard: .emailAddress)
-                        FieldError(message: ob.loginEmptyEmail ? "Enter your email address" : "", theme: theme)
+                        FieldError(message: ob.loginEmptyEmail ? store.S["errEnterEmail"] : "", theme: theme)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -679,7 +681,7 @@ struct OnboardingScreen: View {
     /// The two password-side failures are mutually exclusive — `login()` clears
     /// one before setting the other — so they share a single reserved row.
     private var loginPasswordError: String {
-        if ob.loginEmptyPassword { return "Enter your password" }
+        if ob.loginEmptyPassword { return store.S["errEnterPassword"] }
         return ob.loginError
     }
 
@@ -697,7 +699,7 @@ struct OnboardingScreen: View {
 
         store.runAuth(.login) {
             guard await store.auth.logIn(email: email, password: ob.loginPassword) else {
-                ob.loginError = store.auth.errorMessage ?? ""
+                ob.loginError = store.authMessage
                 return
             }
             // An account that was made but never confirmed picks up on the

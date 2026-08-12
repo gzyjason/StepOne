@@ -40,51 +40,51 @@ enum AuthError: Error, Equatable {
     case network
     case unknown(code: Int, description: String)
 
-    /// Copy for the field-level error rows. Sentence case without a full stop,
-    /// matching the strings already hard-coded in the register and log-in
-    /// forms.
-    var message: String {
+    /// Key into StepOneContent's string table. The error stays a plain value
+    /// and knows nothing about language; the store resolves it, since that is
+    /// where the active language lives.
+    var key: String {
         switch self {
         case .invalidEmail:
-            return "Enter a valid email address"
-        // Neither names the provider on purpose. Firebase does not say which
-        // one owns the address, and with email enumeration protection on
-        // there is no way to ask — so "registered with Google" would be a
-        // guess, wrong for anyone who signed up with a password or with Apple.
+            return "errEmailInvalid"
+        // Neither of the next two names the provider on purpose. Firebase does
+        // not say which one owns the address, and with email enumeration
+        // protection on there is no way to ask — "registered with Google"
+        // would be a guess, wrong for a password or Apple account.
         case .emailAlreadyInUse:
-            return "This email is already registered — log in instead"
+            return "errEmailInUse"
         case .accountExistsWithDifferentProvider:
-            return "This email is registered with a different sign-in"
+            return "errOtherProvider"
         case .appleTokenMissing:
-            return "Apple did not return a sign-in token. Try again"
+            return "errAppleToken"
         case .googleTokenMissing:
-            return "Google did not return a sign-in token. Try again"
+            return "errGoogleToken"
         case .weakPassword:
-            return "Use 8 or more characters with a number and a letter"
+            return "errWeakPassword"
         case .invalidCredentials:
-            return "email or password is incorrect"
+            return "errCredentials"
         case .userDisabled:
-            return "This account has been disabled"
+            return "errUserDisabled"
         case .emailSignInDisabled:
-            return "Email sign-in is not enabled for this project"
+            return "errEmailSignInOff"
         case .requiresRecentLogin:
-            return "Log in again to confirm this change"
+            return "errRecentLogin"
         case .sessionExpired:
-            return "Your session has expired. Log in again"
+            return "errSessionExpired"
         case .notSignedIn:
-            return "You are not logged in"
+            return "errNotSignedIn"
         case .notConfigured:
-            return "Sign-in is not set up yet"
+            return "errNotConfigured"
         case .verificationTimedOut:
-            return "Still waiting for your email to be verified"
+            return "errVerifyTimeout"
         case .expiredActionCode:
-            return "That link has expired. Request a new one"
+            return "errActionCode"
         case .tooManyRequests:
-            return "Too many attempts. Try again in a few minutes"
+            return "errTooMany"
         case .network:
-            return "No connection. Check your network and try again"
+            return "errNetwork"
         case .unknown:
-            return "Something went wrong. Try again"
+            return "errUnknown"
         }
     }
 

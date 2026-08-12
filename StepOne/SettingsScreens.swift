@@ -378,7 +378,7 @@ private struct RegistrationPanel: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 GlassField(placeholder: "Email address", text: $store.rgLoginEmail, theme: theme, keyboard: .emailAddress)
-                FieldError(message: store.rgLoginEmptyEmail ? "Enter your email address" : "", theme: theme)
+                FieldError(message: store.rgLoginEmptyEmail ? store.S["errEnterEmail"] : "", theme: theme)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -439,7 +439,7 @@ private struct RegistrationPanel: View {
     /// The two password-side failures are mutually exclusive — `rgLogin()`
     /// clears one before setting the other — so they share a single reserved row.
     private var loginPasswordError: String {
-        if store.rgLoginEmptyPw { return "Enter your password" }
+        if store.rgLoginEmptyPw { return store.S["errEnterPassword"] }
         return store.rgLoginError
     }
 
