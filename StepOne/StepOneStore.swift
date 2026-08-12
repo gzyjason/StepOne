@@ -174,9 +174,17 @@ final class StepOneStore {
     /// Firebase Authentication. Owned here rather than injected into the view
     /// tree so the store can mirror identity the moment it changes.
     let auth: AuthSession
+    /// Firestore. Distance, completions, chosen categories and discarded
+    /// Trips are the only fields that cross this boundary — see
+    /// `RemoteProgress`.
+    private let progressSync: ProgressSyncing
+    /// The account a Firestore pull has already been done for, so a token
+    /// refresh or other unrelated auth ping doesn't repeat it.
+    private var syncedUID: String?
 
-    init(auth: AuthSession = AuthSession()) {
+    init(auth: AuthSession = AuthSession(), progressSync: ProgressSyncing = FirestoreProgressSync()) {
         self.auth = auth
+        self.progressSync = progressSync
         auth.onChange = { [weak self] state in self?.applyAuthState(state) }
         auth.start()
     }
@@ -187,6 +195,7 @@ final class StepOneStore {
     private var resendTask: Task<Void, Never>?
     private var busyTask: Task<Void, Never>?
     private var entryTask: Task<Void, Never>?
+    private var progressPushTask: Task<Void, Never>?
 
     let slot: CGFloat = 340
 
@@ -265,17 +274,66 @@ final class StepOneStore {
     var displayEmail: String { email ?? "" }
 
     /// Mirrors Firebase's copy of the profile into the fields the screens
-    /// already read. Progress is deliberately untouched — logging in and out
-    /// is handled where the stash rules live.
+    /// already read. Local progress fields are deliberately untouched here —
+    /// the local stash rules handle same-device continuity — but this is
+    /// also where a Firestore pull is kicked off for whichever account just
+    /// became current.
     private func applyAuthState(_ state: AuthSession.State) {
         switch state {
-        case .loading, .signedOut:
+        case .loading:
             break
+        case .signedOut:
+            syncedUID = nil
         case .awaitingVerification(let user), .signedIn(let user):
             if let displayName = user.displayName, !displayName.isEmpty {
                 name = displayName
             }
             email = user.email
+            pullRemoteProgress(for: user.id)
+        }
+    }
+
+    // MARK: Progress sync
+
+    /// Firestore is authoritative once an account has anything saved there,
+    /// so a fresh sign-in — a second device, or the same one after a
+    /// reinstall — replaces whatever is local. Runs once per newly-current
+    /// uid; a doc that doesn't exist yet (a brand new account) is left for
+    /// the next local change to create.
+    private func pullRemoteProgress(for uid: String) {
+        guard uid != syncedUID else { return }
+        syncedUID = uid
+        Task { [weak self] in
+            guard let self else { return }
+            guard let remote = try? await self.progressSync.fetch(uid: uid) else { return }
+            self.meters = remote.meters
+            self.done = remote.done
+            self.journeyBaseOverride = remote.journeyBase
+            // An empty list only happens on corrupt or partial data — never a
+            // legitimate saved state, since onboarding requires picking at
+            // least one category — so it's safer to keep what's local.
+            if !remote.chosen.isEmpty { self.chosen = remote.chosen }
+            self.discarded = remote.discarded
+        }
+    }
+
+    /// Debounced so a burst of local changes — discarding a few Trips back to
+    /// back — becomes one write instead of one per action. Best-effort: sync
+    /// failures are silent, and the next local change tries again.
+    private func scheduleProgressSync() {
+        guard let uid = auth.user?.id else { return }
+        progressPushTask?.cancel()
+        progressPushTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled, let self else { return }
+            let snapshot = RemoteProgress(
+                meters: self.meters,
+                done: self.done,
+                journeyBase: self.journeyBaseOverride ?? self.content.journeyBase,
+                chosen: self.chosen,
+                discarded: self.discarded
+            )
+            try? await self.progressSync.save(snapshot, uid: uid)
         }
     }
 
@@ -371,6 +429,7 @@ final class StepOneStore {
             self.isFading = false
             self.isAnimating = false
             self.showToast(self.S("traveled", "d", self.unit.format(self.meters)))
+            self.scheduleProgressSync()
         }
     }
 
@@ -428,6 +487,7 @@ final class StepOneStore {
             self.isFading = false
             self.isAnimating = false
             self.showToast(self.S["discardedToast"])
+            self.scheduleProgressSync()
         }
     }
 
@@ -495,16 +555,19 @@ final class StepOneStore {
         if !next.contains(category) { category = next.first ?? category }
         index = 0
         drag = .zero
+        scheduleProgressSync()
     }
 
     func moveChosen(from source: IndexSet, to destination: Int) {
         chosen.move(fromOffsets: source, toOffset: destination)
+        scheduleProgressSync()
     }
 
     func restoreDiscarded(at offset: Int) {
         guard discarded.indices.contains(offset) else { return }
         discarded.remove(at: offset)
         showToast(S["restoredToast"], seconds: 2)
+        scheduleProgressSync()
     }
 
     // MARK: Journey disclosure
@@ -804,6 +867,10 @@ final class StepOneStore {
         rgPw2 = ""
         rgErrVerify = ""
         rgErrGeneral = ""
+        // This account has never had a Firestore doc — whatever was earned
+        // while using the app signed out is real progress, so it's worth
+        // seeding immediately rather than waiting on the next Trip.
+        scheduleProgressSync()
     }
 
     func rgLogin() {
@@ -906,6 +973,7 @@ final class StepOneStore {
 
     func startGoogleDelete() {
         deleteError = ""
+        let uid = auth.user?.id
         runAuth(.delete) { [weak self] in
             guard let self else { return }
             do {
@@ -922,7 +990,7 @@ final class StepOneStore {
                 // Hands the Google account back so StepOne stops appearing in
                 // the user's third-party app list.
                 await GoogleSignInFlow.disconnect()
-                self.finishAccountDeletion()
+                self.finishAccountDeletion(uid: uid)
             } catch {
                 guard !GoogleSignInFlow.isCancellation(error) else { return }
                 self.deleteError = self.message(AuthError(error))
@@ -944,6 +1012,7 @@ final class StepOneStore {
                 return
             }
             deleteError = ""
+            let uid = auth.user?.id
             runAuth(.delete) { [weak self] in
                 guard let self else { return }
                 let deleted = await self.auth.deleteAccountWithApple(
@@ -955,7 +1024,7 @@ final class StepOneStore {
                     self.deleteError = self.authMessage
                     return
                 }
-                self.finishAccountDeletion()
+                self.finishAccountDeletion(uid: uid)
             }
         }
     }
@@ -1039,6 +1108,7 @@ final class StepOneStore {
             deleteError = S["errDeletePassword"]
             return
         }
+        let uid = auth.user?.id
         runAuth(.delete) { [weak self] in
             guard let self else { return }
             let deleted = await self.auth.deleteAccount(currentPassword: self.deletePassword)
@@ -1047,13 +1117,15 @@ final class StepOneStore {
                 self.deleteError = self.authMessage
                 return
             }
-            self.finishAccountDeletion()
+            self.finishAccountDeletion(uid: uid)
         }
     }
 
-    /// Shared by both delete paths so the password and Apple routes cannot
-    /// drift apart in what they tear down.
-    private func finishAccountDeletion() {
+    /// Shared by every delete path so password, Apple and Google routes
+    /// cannot drift apart in what they tear down. `uid` is read by the
+    /// caller before the account itself is gone, since by this point
+    /// `auth.user` has already cleared.
+    private func finishAccountDeletion(uid: String?) {
         resendTask?.cancel()
         auth.stopWatchingForVerification()
         sessionStash = nil
@@ -1064,11 +1136,21 @@ final class StepOneStore {
         rgLoginPw = ""
         rgLoginError = ""
         screen = .settings
+        // The account no longer exists to sign back in as, so its progress
+        // doc can never be reached again — remove it rather than leave it
+        // orphaned.
+        if let uid {
+            Task { try? await self.progressSync.delete(uid: uid) }
+        }
     }
 
     /// Everything that belongs to the signed-in account, reset in one place so
     /// log out and delete cannot drift apart.
     private func clearAccountState() {
+        // Otherwise a push already in flight for the outgoing account fires
+        // after this resets everything to zero, and overwrites their saved
+        // progress with it.
+        progressPushTask?.cancel()
         name = nil
         email = nil
         meters = 0
@@ -1137,6 +1219,7 @@ final class StepOneStore {
         meters += onboarding.earnedMeters
         screen = .home
         menuOpen = false
+        scheduleProgressSync()
     }
 }
 

@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // One progress document per signed-in user, keyed by their Firebase Auth
+    // uid. Nobody but that user can read or write it, and a write must look
+    // like the shape StepOne actually sends — no arbitrary fields, no
+    // negative counters, no unbounded arrays.
+    match /userProgress/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(
+            ['meters', 'done', 'journeyBase', 'chosen', 'discarded', 'updatedAt']
+           )
+        && request.resource.data.meters is int && request.resource.data.meters >= 0
+        && request.resource.data.done is int && request.resource.data.done >= 0
+        && request.resource.data.journeyBase is int && request.resource.data.journeyBase >= 0
+        && request.resource.data.chosen is list && request.resource.data.chosen.size() <= 7
+        && request.resource.data.discarded is list && request.resource.data.discarded.size() <= 2000
+        && request.resource.data.updatedAt is timestamp;
+
+      // Everything else is denied by Firestore's default-deny.
+    }
+  }
+}

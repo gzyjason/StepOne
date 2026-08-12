@@ -1,6 +1,6 @@
 # Privacy Policy for StepOne
 
-**Effective date:** August 11, 2026
+**Effective date:** August 12, 2026
 
 This policy explains what information StepOne ("the app", "we", "us") collects, how it is used, and the choices you have. It's written to match what the app actually does — not a generic template — so if the app's behavior changes, this document should be updated alongside it.
 
@@ -22,9 +22,9 @@ When you register or sign in, we collect what's needed to create and secure your
 
 This information is stored by Firebase Authentication on our behalf. We do not operate our own separate database of accounts.
 
-### In-app activity
+### Trip progress
 
-As you use StepOne, the app keeps track of things like your chosen Trip categories, which Trips you've completed or discarded, and your distance/milestone progress, so the app can function. This activity data lives on your device for the duration of your session and is not uploaded to or stored on our servers.
+If you're signed in, StepOne keeps your chosen Trip categories, which Trips you've completed or discarded, and your distance/milestone progress in sync with our servers — specifically, in a Cloud Firestore document tied to your account, holding only those fields. That's what lets your progress follow you to a new device or survive a reinstall. Nobody but your signed-in account can read or write that document — it's enforced by server-side rules, not just app behavior. If you're not signed in, this data stays on your device only.
 
 ### Notification schedule
 
@@ -42,15 +42,16 @@ StepOne does not use analytics, advertising, or crash-reporting SDKs, does not a
 
 ## Third-party services
 
-StepOne relies on the following third parties to provide sign-in and authentication. Each has its own privacy policy governing how it handles your data:
+StepOne relies on the following third parties to provide sign-in, authentication, and Trip progress storage. Each has its own privacy policy governing how it handles your data:
 
 - **Firebase Authentication** (Google) — [https://firebase.google.com/support/privacy](https://firebase.google.com/support/privacy)
+- **Cloud Firestore** (Google), for the Trip progress described above — [https://firebase.google.com/support/privacy](https://firebase.google.com/support/privacy)
 - **Sign in with Apple** — [https://www.apple.com/legal/privacy/](https://www.apple.com/legal/privacy/)
 - **Google Sign-In** — [https://policies.google.com/privacy](https://policies.google.com/privacy)
 
 ## Data retention and deletion
 
-Your account information is retained for as long as your account exists. You can permanently delete your account at any time from **Settings → Account → Delete Account** inside the app, which removes your account from Firebase Authentication. In-app activity data that lives only on your device is removed automatically when you sign out, delete your account, or uninstall the app.
+Your account information, and your synced Trip progress, are retained for as long as your account exists. You can permanently delete your account at any time from **Settings → Account → Delete Account** inside the app, which removes both your account from Firebase Authentication and your Trip progress document from Cloud Firestore. Data that lives only on your device — because you were never signed in, or signed out — is removed automatically when you sign out, delete your account, or uninstall the app.
 
 To request deletion any other way, contact us at **support@morso.one**.
 
@@ -64,7 +65,7 @@ StepOne is not directed at children under 13 (or the minimum age required by you
 
 ## International data transfers
 
-Firebase Authentication stores data on Google Cloud infrastructure, which may process and store information outside your country of residence.
+Firebase Authentication and Cloud Firestore store data on Google Cloud infrastructure, which may process and store information outside your country of residence. StepOne's Firestore data is currently hosted in the United States (`nam5`).
 
 ## Changes to this policy
 
