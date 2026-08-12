@@ -178,9 +178,14 @@ struct OnboardingScreen: View {
         if !cards.isEmpty, slot == 0 || cards.count > 1 {
             let card = cards[ob.wrapped(ob.position + slot)]
             let isTop = slot == 0
-            let u = CGFloat(slot) + ob.dragX / store.slot
-            let entryOffset: CGFloat = (ob.entering && isTop) ? 660 : 0
-            let offsetY = (isTop ? ob.dragY : 0) + entryOffset
+            // The opening card still rises from below — there is no deck
+            // behind it yet to come from. Every later one arrives from the
+            // right, retracing the sideways cycle, and rides the same `u` so
+            // it picks up that cycle's scale and tilt on the way in.
+            let entryDrop: CGFloat = (ob.entering && ob.firstDeal && isTop) ? 660 : 0
+            let entryShift: CGFloat = (ob.entering && !ob.firstDeal && isTop) ? store.slot : 0
+            let u = CGFloat(slot) + (ob.dragX + entryShift) / store.slot
+            let offsetY = (isTop ? ob.dragY : 0) + entryDrop
 
             let body = TripCardView(
                 title: card.title,

@@ -431,13 +431,13 @@ final class StepOneStore {
         }
     }
 
-    /// How far below the stage an incoming card starts. Matches the drop the
-    /// onboarding deck already uses for its opening card.
-    static let entryDrop: CGFloat = 660
-
-    /// Parks the new top card below the stage and lets it rise. The pause is
-    /// what makes it work: set both values in one turn of the run loop and
-    /// SwiftUI coalesces them, leaving the card to appear without travelling.
+    /// Seats the incoming card where it was sitting a moment ago — one slot
+    /// to the right — and walks it into the middle, so finishing a trip
+    /// arrives the same way swiping sideways to the next one does.
+    ///
+    /// The pause is what makes it work: set both values in one turn of the
+    /// run loop and SwiftUI coalesces them, leaving the card to appear at its
+    /// destination without ever travelling.
     private func beginEntry() {
         var instant = Transaction()
         instant.disablesAnimations = true
@@ -447,9 +447,8 @@ final class StepOneStore {
         entryTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(30))
             guard !Task.isCancelled, let self else { return }
-            withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.5)) {
-                self.entering = false
-            }
+            // The sideways cycle's own curve, so the two read as one motion.
+            withAnimation(self.cardAnimation) { self.entering = false }
         }
     }
 

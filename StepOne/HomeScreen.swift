@@ -148,12 +148,14 @@ struct HomeScreen: View {
         let trips = store.trips
         if !trips.isEmpty {
             let trip = trips[store.wrapped(store.index + slot)]
-            let u = CGFloat(slot) + store.drag.width / store.slot
+            // The incoming card starts one slot right — where it was peeking
+            // from a moment ago — and rides the same `u` a sideways drag does,
+            // so it picks up that cycle's scale and tilt on the way in. Its
+            // neighbours stay put, or they would jump on every swipe.
+            let entryShift: CGFloat = (store.entering && slot == 0) ? store.slot : 0
+            let u = CGFloat(slot) + (store.drag.width + entryShift) / store.slot
             let offsetX = u * store.slot
-            // Only the incoming card is parked below; its neighbours stay
-            // put, or they would blink out and back on every swipe.
-            let entryOffset: CGFloat = (store.entering && slot == 0) ? StepOneStore.entryDrop : 0
-            let offsetY: CGFloat = (slot == 0 ? store.drag.height : 0) + entryOffset
+            let offsetY: CGFloat = slot == 0 ? store.drag.height : 0
             let scale = 1 - min(abs(u), 1.4) * 0.06
             let isTop = slot == 0
 

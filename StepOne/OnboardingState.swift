@@ -256,9 +256,11 @@ final class OnboardingState {
         ])
     }
 
-    /// Parks the new top card below the stage and lets it rise. The pause
-    /// matters: set both values in one turn of the run loop and SwiftUI
-    /// coalesces them, leaving the card to appear without travelling.
+    /// Seats the incoming card one slot to the right — where it was peeking
+    /// from a moment ago — and walks it into the middle, matching a sideways
+    /// cycle. The pause matters: set both values in one turn of the run loop
+    /// and SwiftUI coalesces them, leaving the card to appear without
+    /// travelling.
     private func beginEntry() {
         var instant = Transaction()
         instant.disablesAnimations = true
@@ -268,7 +270,9 @@ final class OnboardingState {
         entryTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(30))
             guard !Task.isCancelled, let self else { return }
-            withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.5)) {
+            // The same curve and duration slideDemo uses for a sideways
+            // cycle, so the two motions are indistinguishable.
+            withAnimation(.timingCurve(0.32, 0.72, 0.28, 1, duration: 0.42)) {
                 self.entering = false
             }
         }
