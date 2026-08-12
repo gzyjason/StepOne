@@ -163,7 +163,7 @@ struct AccountScreen: View {
             .padding(.top, 4)
 
             if !store.usesPassword {
-                Text("Your email is managed by your Apple ID.")
+                Text(store.S["ssoEmail"])
                     .font(.system(size: 12))
                     .foregroundStyle(theme.hint)
                     .padding(.horizontal, 16)
@@ -207,7 +207,7 @@ struct AccountScreen: View {
                 }
 
                 Button { store.logOut() } label: {
-                    SettingsRow(title: "Log out", theme: theme) {
+                    SettingsRow(title: store.S["authLogout"], theme: theme) {
                         if store.busy == .logout { Spinner(color: theme.textPrimary, size: 16) }
                     }
                     .opacity(store.busy == .logout ? 0.35 : 1)
@@ -225,7 +225,7 @@ struct AccountScreen: View {
                 withAnimation(.easeOut(duration: 0.24)) { store.dangerOpen.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    Text("Danger zone".uppercased())
+                    Text(store.S["dangerZone"].uppercased())
                         .font(.system(size: 12.5, weight: .semibold))
                         .kerning(0.6)
                         .foregroundStyle(theme.textSecondary)
@@ -256,7 +256,7 @@ struct AccountScreen: View {
 
                         Button { store.alertOpen = true } label: {
                             HStack {
-                                Text("Delete account")
+                                Text(store.S["deleteAccount"])
                                     .font(.system(size: 15.5, weight: .medium))
                                     .foregroundStyle(theme.destructive)
                                 Spacer()
@@ -285,7 +285,7 @@ struct AccountScreen: View {
                         FieldError(message: store.deleteError, theme: theme)
                     }
 
-                    Text("Deleting your account permanently removes your profile and all of Your Journey.")
+                    Text(store.S["deleteAccountBody"])
                         .font(.system(size: 12))
                         .foregroundStyle(theme.hint)
                         .lineSpacing(2)
@@ -322,45 +322,45 @@ private struct RegistrationPanel: View {
 
     private var registerForm: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Register an account to never lose your progress:")
+            Text(store.S["authRegisterTitle"])
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(4)
                 .padding(.horizontal, 6)
 
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Email address", text: $store.rgEmail, theme: theme, keyboard: .emailAddress)
+                GlassField(placeholder: store.S["authEmail"], text: $store.rgEmail, theme: theme, keyboard: .emailAddress)
                 FieldError(message: store.rgErrEmail, theme: theme)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Password", text: $store.rgPw, theme: theme, secure: true)
+                GlassField(placeholder: store.S["authPassword"], text: $store.rgPw, theme: theme, secure: true)
                 FieldError(message: store.rgErrPw, theme: theme)
-                Text("8 or more characters, numbers, and at least one letter")
+                Text(store.S["authPasswordHint"])
                     .font(.system(size: 12))
                     .foregroundStyle(theme.hint)
                     .padding(.horizontal, 6)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Confirm password", text: $store.rgPw2, theme: theme, secure: true)
+                GlassField(placeholder: store.S["confirmPw"], text: $store.rgPw2, theme: theme, secure: true)
                 FieldError(message: store.rgErrPw2, theme: theme)
             }
 
             FieldError(message: store.rgErrGeneral, theme: theme)
 
-            PrimaryButton(title: "Register", theme: theme, busy: store.busy == .rgRegister) {
+            PrimaryButton(title: store.S["authRegister"], theme: theme, busy: store.busy == .rgRegister) {
                 store.rgRegister()
             }
             .padding(.top, 4)
 
-            OrDivider(theme: theme)
+            OrDivider(theme: theme, label: store.S["orDivider"])
 
             AppleSignInButton(store: store)
             GoogleAuthButton(store: store)
             FieldError(message: store.federatedError, theme: theme)
 
-            linkButton("Log in to existing account") {
+            linkButton(store.S["obLoginExisting"]) {
                 store.rgStage = .login
                 store.rgLoginError = ""
                 store.rgLoginEmptyEmail = false
@@ -371,33 +371,33 @@ private struct RegistrationPanel: View {
 
     private var loginForm: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Log in to your account:")
+            Text(store.S["authLoginTitle"])
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .padding(.horizontal, 6)
 
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Email address", text: $store.rgLoginEmail, theme: theme, keyboard: .emailAddress)
+                GlassField(placeholder: store.S["authEmail"], text: $store.rgLoginEmail, theme: theme, keyboard: .emailAddress)
                 FieldError(message: store.rgLoginEmptyEmail ? store.S["errEnterEmail"] : "", theme: theme)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                GlassField(placeholder: "Password", text: $store.rgLoginPw, theme: theme, secure: true)
+                GlassField(placeholder: store.S["authPassword"], text: $store.rgLoginPw, theme: theme, secure: true)
                 FieldError(message: loginPasswordError, theme: theme)
             }
 
-            PrimaryButton(title: "Log in", theme: theme, busy: store.busy == .rgLogin) {
+            PrimaryButton(title: store.S["authLogin"], theme: theme, busy: store.busy == .rgLogin) {
                 store.rgLogin()
             }
             .padding(.top, 4)
 
-            OrDivider(theme: theme)
+            OrDivider(theme: theme, label: store.S["orDivider"])
 
             AppleSignInButton(store: store)
             GoogleAuthButton(store: store)
             FieldError(message: store.federatedError, theme: theme)
 
-            linkButton("Register a new account") {
+            linkButton(store.S["authRegisterNew"]) {
                 store.rgStage = .form
                 store.rgErrGeneral = ""
                 store.rgLoginError = ""
@@ -407,7 +407,7 @@ private struct RegistrationPanel: View {
 
     private var verifyPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("We've sent a confirmation link to \(verifyTarget). Open it, and this panel updates by itself.")
+            Text(store.S("authLinkSentPanel", "e", verifyTarget))
                 .font(.system(size: 14.5))
                 .foregroundStyle(theme.textSecondary)
                 .lineSpacing(3)
@@ -415,7 +415,7 @@ private struct RegistrationPanel: View {
 
             FieldError(message: store.rgErrVerify, theme: theme)
 
-            PrimaryButton(title: "I've opened the link", theme: theme, busy: store.busy == .rgVerify) {
+            PrimaryButton(title: store.S["authOpenedLink"], theme: theme, busy: store.busy == .rgVerify) {
                 store.rgCheckVerification()
             }
             .padding(.top, 4)
@@ -426,7 +426,7 @@ private struct RegistrationPanel: View {
                 store.rgStage = .form
                 store.rgErrVerify = ""
             } label: {
-                Text("Edit email address")
+                Text(store.S["authEditEmail"])
                     .font(.system(size: 13.5, weight: .medium))
                     .foregroundStyle(theme.textSecondary)
                     .frame(maxWidth: .infinity)

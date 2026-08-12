@@ -508,11 +508,12 @@ struct FieldError: View {
 /// sign-in beneath it.
 struct OrDivider: View {
     let theme: StepOneTheme
+    let label: String
 
     var body: some View {
         HStack(spacing: 10) {
             Rectangle().fill(theme.sepThin).frame(height: 0.5)
-            Text("or")
+            Text(label)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(theme.hint)
             Rectangle().fill(theme.sepThin).frame(height: 0.5)

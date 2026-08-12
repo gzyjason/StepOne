@@ -143,10 +143,10 @@ struct ContentView: View {
                 if store.busy == nil { store.alertOpen = false }
             } content: {
                 StepAlert(
-                    title: "Delete your account?",
-                    message: "This permanently deletes your Firebase account, your name and all of Your Journey. This cannot be undone.",
+                    title: store.S["deleteTitle"],
+                    message: store.S["deleteBody"],
                     cancelTitle: store.S["cancel"],
-                    confirmTitle: "Delete",
+                    confirmTitle: store.S["deleteConfirm"],
                     theme: theme,
                     confirmBusy: store.busy == .delete,
                     onCancel: { if store.busy == nil { store.alertOpen = false } },

@@ -41,11 +41,11 @@ struct OnboardingScreen: View {
 
     private var quote: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("A thousand mile journey starts with step one")
+            Text(store.S["obQuote"])
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(6)
-            Text("- Laozi")
+            Text(store.S["obQuoteAuthor"])
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(theme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -61,7 +61,7 @@ struct OnboardingScreen: View {
 
     private var welcome: some View {
         ZStack {
-            Text("Welcome to StepOne, where you find motivation and joy through simple, achievable small actions")
+            Text(store.S["obWelcome"])
                 .font(.system(size: 25, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(8)
@@ -72,11 +72,11 @@ struct OnboardingScreen: View {
 
             VStack(spacing: 4) {
                 Spacer()
-                PrimaryButton(title: "Let's get started", theme: theme) {
+                PrimaryButton(title: store.S["obStart"], theme: theme) {
                     ob.startFromWelcome()
                 }
                 Button { ob.toLogin(from: .welcome) } label: {
-                    Text("Log in to existing account")
+                    Text(store.S["obLoginExisting"])
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(theme.textSecondary)
                         .frame(height: 46)
@@ -111,12 +111,12 @@ struct OnboardingScreen: View {
                 Group {
                     tutorialArrow("arrow.up", size: Self.leadArrow)
                         .position(x: centerX, y: Self.arrowInset)
-                    tutorialLabel("Swipe up on the Trip to complete it")
+                    tutorialLabel(store.S["obSwipeUp"])
                         .position(x: centerX, y: Self.arrowInset + Self.arrowToLabel)
 
                     sidewaysGuide(centerX: centerX, cardEdge: cardEdge, y: cardTop - Self.sideRowLift)
 
-                    tutorialLabel("Swipe down on the Trip to discard it")
+                    tutorialLabel(store.S["obSwipeDown"])
                         .position(x: centerX, y: downArrowY - Self.arrowToLabel)
                     tutorialArrow("arrow.down", size: Self.leadArrow)
                         .position(x: centerX, y: downArrowY)
@@ -148,7 +148,7 @@ struct OnboardingScreen: View {
                 .position(x: centerX - cardEdge, y: y)
             tutorialArrow("arrow.right", size: Self.sideArrow)
                 .position(x: centerX + cardEdge, y: y)
-            tutorialLabel("Swipe sideways to switch Trips")
+            tutorialLabel(store.S["obSwipeSide"])
                 .frame(maxWidth: TripCardView.size.width - 76)
                 .position(x: centerX, y: y)
         }
@@ -265,12 +265,12 @@ struct OnboardingScreen: View {
 
     private var rewardExplainer: some View {
         VStack(alignment: .leading, spacing: 30) {
-            Text("Completing Trips gives you distances that will be added to Your Journey;")
+            Text(store.S["obReward1"])
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(8)
                 .opacity(ob.reward1Opacity)
-            Text("Milestones are achieved with enough distance in Your Journey.")
+            Text(store.S["obReward2"])
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(8)
@@ -285,12 +285,12 @@ struct OnboardingScreen: View {
 
     private var namePrompt: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text("What is your name:")
+            Text(store.S["obNamePrompt"])
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
 
             VStack(alignment: .leading, spacing: 8) {
-                TextField("Your name", text: Bindable(ob).name)
+                TextField(store.S["obNamePlaceholder"], text: Bindable(ob).name)
                     .font(.system(size: 21))
                     .foregroundStyle(theme.textPrimary)
                     .frame(height: 46)
@@ -303,14 +303,14 @@ struct OnboardingScreen: View {
                     .submitLabel(.done)
 
                 FieldError(
-                    message: ob.nameError ? "Please enter your name" : "",
+                    message: ob.nameError ? store.S["obNameRequired"] : "",
                     theme: theme,
                     inset: 0
                 )
             }
 
             Button { ob.confirmName() } label: {
-                Text("Confirm")
+                Text(store.S["confirm"])
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 30)
@@ -332,7 +332,7 @@ struct OnboardingScreen: View {
 
     private var greeting: some View {
         GeometryReader { geo in
-            Text(ob.greetingLine(part: DayPart.current()))
+            Text(ob.greetingLine(store.S, part: DayPart.current()))
                 .font(.system(size: ob.greetingDocked ? 22 : 30, weight: .bold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(5)
@@ -352,7 +352,7 @@ struct OnboardingScreen: View {
 
     private var typePicker: some View {
         VStack(spacing: 0) {
-            Text("Please select 1-3 types of small \"Trips\" you are willing to take:")
+            Text(store.S["obTypesPrompt"])
                 .font(.system(size: 23, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(6)
@@ -361,11 +361,11 @@ struct OnboardingScreen: View {
                 .padding(.top, 80)
 
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text("Choose 1-3 types to show on Home")
+                Text(store.S["obTypesHint"])
                     .font(.system(size: 13.5))
                     .foregroundStyle(theme.textSecondary)
                 Spacer()
-                Text("\(ob.types.count) of 3 selected")
+                Text(store.S("selCount", "n", "\(ob.types.count)"))
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(theme.textSecondary)
             }
@@ -403,7 +403,7 @@ struct OnboardingScreen: View {
             .padding(.horizontal, 18)
 
             PrimaryButton(
-                title: "Confirm",
+                title: store.S["confirm"],
                 theme: theme,
                 enabled: !ob.types.isEmpty
             ) { ob.confirmTypes() }
@@ -419,7 +419,7 @@ struct OnboardingScreen: View {
 
     private var registerForm: some View {
         VStack(spacing: 0) {
-            Text("Register an account to never lose your progress:")
+            Text(store.S["authRegisterTitle"])
                 .font(.system(size: 23, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
                 .lineSpacing(6)
@@ -431,39 +431,39 @@ struct OnboardingScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Email address", text: Bindable(ob).email, theme: theme, keyboard: .emailAddress)
+                        GlassField(placeholder: store.S["authEmail"], text: Bindable(ob).email, theme: theme, keyboard: .emailAddress)
                         FieldError(message: ob.errEmail, theme: theme)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Password", text: Bindable(ob).password, theme: theme, secure: true)
+                        GlassField(placeholder: store.S["authPassword"], text: Bindable(ob).password, theme: theme, secure: true)
                         FieldError(message: ob.errPassword, theme: theme)
-                        Text("8 or more characters, numbers, and at least one letter")
+                        Text(store.S["authPasswordHint"])
                             .font(.system(size: 12))
                             .foregroundStyle(theme.hint)
                             .padding(.horizontal, 6)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Confirm password", text: Bindable(ob).passwordConfirm, theme: theme, secure: true)
+                        GlassField(placeholder: store.S["confirmPw"], text: Bindable(ob).passwordConfirm, theme: theme, secure: true)
                         FieldError(message: ob.errPasswordConfirm, theme: theme)
                     }
 
                     FieldError(message: ob.errGeneral, theme: theme)
 
-                    PrimaryButton(title: "Register", theme: theme, busy: store.busy == .register) {
+                    PrimaryButton(title: store.S["authRegister"], theme: theme, busy: store.busy == .register) {
                         register()
                     }
                     .padding(.top, 4)
 
-                    OrDivider(theme: theme)
+                    OrDivider(theme: theme, label: store.S["orDivider"])
 
                     AppleSignInButton(store: store) { store.finishOnboarding() }
                     GoogleAuthButton(store: store) { store.finishOnboarding() }
                     FieldError(message: store.federatedError, theme: theme)
 
                     Button { ob.toLogin(from: .register) } label: {
-                        Text("Log in to existing account")
+                        Text(store.S["obLoginExisting"])
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(theme.accent)
                             .frame(maxWidth: .infinity)
@@ -472,7 +472,7 @@ struct OnboardingScreen: View {
                     .buttonStyle(PressStyle(scale: 1))
 
                     Button { store.finishOnboarding(name: "friend") } label: {
-                        Text("Skip registration")
+                        Text(store.S["authSkip"])
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(theme.hint)
                             .frame(maxWidth: .infinity)
@@ -534,7 +534,7 @@ struct OnboardingScreen: View {
                     HStack(spacing: 1) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
-                        Text("Back")
+                        Text(store.S["authBack"])
                             .font(.system(size: 16, weight: .medium))
                     }
                     .foregroundStyle(theme.textPrimary)
@@ -544,7 +544,7 @@ struct OnboardingScreen: View {
                 }
                 .buttonStyle(PressStyle(scale: 1))
 
-                Text("Verify your email")
+                Text(store.S["authVerifyTitle"])
                     .font(.system(size: 30, weight: .heavy))
                     .foregroundStyle(theme.textPrimary)
                     .padding(.horizontal, 14)
@@ -557,7 +557,7 @@ struct OnboardingScreen: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text("We've sent a confirmation link to \(verifyTarget). Open it, and this screen moves on by itself.")
+                    Text(store.S("authLinkSentScreen", "e", verifyTarget))
                         .font(.system(size: 14.5))
                         .foregroundStyle(theme.textSecondary)
                         .lineSpacing(3)
@@ -565,7 +565,7 @@ struct OnboardingScreen: View {
 
                     FieldError(message: ob.verifyError, theme: theme)
 
-                    PrimaryButton(title: "I've opened the link", theme: theme, busy: store.busy == .verify) {
+                    PrimaryButton(title: store.S["authOpenedLink"], theme: theme, busy: store.busy == .verify) {
                         verify()
                     }
 
@@ -573,7 +573,9 @@ struct OnboardingScreen: View {
                         store.resendVerification(.resend)
                     } label: {
                         ZStack {
-                            Text(store.resendSeconds > 0 ? "Resend link in \(store.resendSeconds)s" : "Resend link")
+                            Text(store.resendSeconds > 0
+                                ? store.S("authResendLinkIn", "s", "\(store.resendSeconds)")
+                                : store.S["authResendLink"])
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundStyle(theme.accent)
                                 .opacity(store.busy == .resend ? 0 : 1)
@@ -626,7 +628,7 @@ struct OnboardingScreen: View {
                     HStack(spacing: 1) {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 17, weight: .semibold))
-                        Text("Back")
+                        Text(store.S["authBack"])
                             .font(.system(size: 16, weight: .medium))
                     }
                     .foregroundStyle(theme.textPrimary)
@@ -636,7 +638,7 @@ struct OnboardingScreen: View {
                 }
                 .buttonStyle(PressStyle(scale: 1))
 
-                Text("Log in")
+                Text(store.S["authLogin"])
                     .font(.system(size: 30, weight: .heavy))
                     .foregroundStyle(theme.textPrimary)
                     .padding(.horizontal, 14)
@@ -650,21 +652,21 @@ struct OnboardingScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Email address", text: Bindable(ob).loginEmail, theme: theme, keyboard: .emailAddress)
+                        GlassField(placeholder: store.S["authEmail"], text: Bindable(ob).loginEmail, theme: theme, keyboard: .emailAddress)
                         FieldError(message: ob.loginEmptyEmail ? store.S["errEnterEmail"] : "", theme: theme)
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        GlassField(placeholder: "Password", text: Bindable(ob).loginPassword, theme: theme, secure: true)
+                        GlassField(placeholder: store.S["authPassword"], text: Bindable(ob).loginPassword, theme: theme, secure: true)
                         FieldError(message: loginPasswordError, theme: theme)
                     }
 
-                    PrimaryButton(title: "Log in", theme: theme, busy: store.busy == .login) {
+                    PrimaryButton(title: store.S["authLogin"], theme: theme, busy: store.busy == .login) {
                         login()
                     }
                     .padding(.top, 4)
 
-                    OrDivider(theme: theme)
+                    OrDivider(theme: theme, label: store.S["orDivider"])
 
                     AppleSignInButton(store: store) { store.finishOnboarding() }
                     GoogleAuthButton(store: store) { store.finishOnboarding() }

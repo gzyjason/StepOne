@@ -331,8 +331,10 @@ final class OnboardingState {
     /// tutorial and keeps the screen to itself.
     var greetingOpacity: Double { (step == .greet && phase >= 1) ? 1 : 0 }
 
-    func greetingLine(part: DayPart) -> String {
+    /// Uses the shared localised greeting rather than an English one of
+    /// its own — onboarding now runs in the device's language.
+    func greetingLine(_ S: Strings, part: DayPart) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return "Good \(part.englishWord), \(trimmed.isEmpty ? "friend" : trimmed)"
+        return S.greeting(part: part, name: trimmed.isEmpty ? S["friend"] : trimmed)
     }
 }

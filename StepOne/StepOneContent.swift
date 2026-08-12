@@ -74,11 +74,12 @@ struct StepOneContent: Codable {
 
     /// Milestone phases. The design groups the 51 milestones into four named
     /// arcs by index range.
-    static let phases: [(name: String, range: Range<Int>)] = [
-        ("The Local Footsteps", 0..<10),
-        ("The City Crossings", 10..<22),
-        ("The Geographic Wonders", 22..<35),
-        ("The Epic Expeditions", 35..<51),
+    /// Names are string keys; the Journey screen resolves them.
+    static let phases: [(key: String, range: Range<Int>)] = [
+        ("phaseLocal", 0..<10),
+        ("phaseCity", 10..<22),
+        ("phaseWonders", 22..<35),
+        ("phaseEpic", 35..<51),
     ]
 }
 

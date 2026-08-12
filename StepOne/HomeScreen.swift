@@ -135,7 +135,7 @@ struct HomeScreen: View {
     /// not in the generated content bundle, so it stays English while the
     /// category name follows the active language, matching the tab below.
     private var emptyDeckMessage: some View {
-        Text("Whoa, there's nothing here... Did you discard everything in \(store.S.categoryName(store.category))?")
+        Text(store.S("emptyCategory", "c", store.S.categoryName(store.category)))
             .font(.system(size: 17, weight: .semibold))
             .foregroundStyle(theme.textSecondary)
             .multilineTextAlignment(.center)

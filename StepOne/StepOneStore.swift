@@ -54,7 +54,11 @@ final class StepOneStore {
     let content = StepOneContent.shared
 
     // Content selection
-    var lang = "en"
+    /// Seeded from the device. Onboarding runs before Settings is reachable,
+    /// so without this a first run would always be in English no matter what
+    /// the phone is set to — and the other seven translations would only ever
+    /// appear to someone who already found the language picker.
+    var lang = StepOneStore.deviceLanguage()
     var category = "physical"
     var chosen = ["creativity", "physical", "housework"]
     var index = 0
@@ -200,6 +204,32 @@ final class StepOneStore {
     }
     var theme: StepOneTheme { .of(night: isNight) }
     var S: Strings { Strings(lang: lang, content: content) }
+
+    /// The closest of the eight translations to what the device asks for,
+    /// falling back to English.
+    static func deviceLanguage(_ preferred: [String] = Locale.preferredLanguages) -> String {
+        for tag in preferred {
+            let locale = Locale(identifier: tag)
+            switch locale.language.languageCode?.identifier {
+            case "zh":
+                // Script matters here — the two Chinese tables are not
+                // interchangeable, and a tag often carries only a region.
+                if let script = locale.language.script?.identifier {
+                    return script == "Hant" ? "zhHant" : "zhHans"
+                }
+                let traditional = ["TW", "HK", "MO"]
+                return traditional.contains(locale.region?.identifier ?? "") ? "zhHant" : "zhHans"
+            case "es": return "es"
+            case "fr": return "fr"
+            case "de": return "de"
+            case "ja": return "ja"
+            case "ko": return "ko"
+            case "en": return "en"
+            default: continue
+            }
+        }
+        return "en"
+    }
     /// Registered means Firebase has a *verified* account signed in. An
     /// account that exists but has not confirmed its address still reads as
     /// signed out, so Account keeps offering the registration panel.
@@ -223,11 +253,11 @@ final class StepOneStore {
     /// it hands back.
     var reauthPrompt: String {
         usesApple
-            ? "Confirm with Apple to delete your account. This also revokes StepOne's access to your Apple ID."
-            : "Confirm with Google to delete your account. This also removes StepOne from your Google account."
+            ? S["reauthApple"]
+            : S["reauthGoogle"]
     }
 
-    var displayName: String { name ?? "friend" }
+    var displayName: String { name ?? S["friend"] }
     var displayEmail: String { email ?? "" }
 
     /// Mirrors Firebase's copy of the profile into the fields the screens
@@ -1010,7 +1040,7 @@ final class StepOneStore {
     /// Everything that belongs to the signed-in account, reset in one place so
     /// log out and delete cannot drift apart.
     private func clearAccountState() {
-        name = "friend"
+        name = nil
         email = nil
         meters = 0
         discarded = []
@@ -1064,7 +1094,9 @@ final class StepOneStore {
         // a returning log-in carries the name the account was made with.
         let trimmedName = onboarding.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let firebaseName = auth.user?.displayName.flatMap { $0.isEmpty ? nil : $0 }
-        name = overrideName ?? firebaseName ?? (trimmedName.isEmpty ? "friend" : trimmedName)
+        // nil rather than a literal, so displayName falls back to the
+        // localised placeholder instead of freezing English into state.
+        name = overrideName ?? firebaseName ?? (trimmedName.isEmpty ? nil : trimmedName)
 
         let trimmedEmail = onboarding.email.trimmingCharacters(in: .whitespacesAndNewlines)
         email = overrideEmail ?? auth.user?.email ?? (trimmedEmail.isEmpty ? email : trimmedEmail)

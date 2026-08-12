@@ -20,8 +20,8 @@ import UIKit
 
 struct GoogleAuthButton: View {
     @Bindable var store: StepOneStore
-    /// One of Google's approved strings.
-    var title = "Sign in with Google"
+    /// Nil uses Google's approved "Sign in with Google", translated.
+    var title: String?
     var height: CGFloat = 54
     var radius: CGFloat = 18
     /// Called once Firebase has accepted the Google credential.
@@ -29,7 +29,7 @@ struct GoogleAuthButton: View {
 
     var body: some View {
         GoogleButtonSurface(
-            title: title,
+            title: title ?? store.S["googleSignIn"],
             height: height,
             radius: radius,
             night: store.isNight,
@@ -48,7 +48,7 @@ struct GoogleReauthButton: View {
 
     var body: some View {
         GoogleButtonSurface(
-            title: "Continue with Google",
+            title: store.S["googleContinue"],
             height: 52,
             radius: 16,
             night: store.isNight,

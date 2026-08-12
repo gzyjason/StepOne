@@ -144,7 +144,7 @@ struct JourneyScreen: View {
 
             VStack(spacing: 12) {
                 ForEach(Array(StepOneContent.phases.enumerated()), id: \.offset) { phaseIndex, phase in
-                    phaseCard(phaseIndex: phaseIndex, name: phase.name, range: phase.range)
+                    phaseCard(phaseIndex: phaseIndex, name: store.S[phase.key], range: phase.range)
                 }
             }
         }
