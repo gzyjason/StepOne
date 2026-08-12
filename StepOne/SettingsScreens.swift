@@ -477,7 +477,7 @@ struct PreferencesScreen: View {
             VStack(spacing: 0) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.4)) {
-                        store.nightOverride = !store.isNight
+                        store.toggleNight()
                     }
                 } label: {
                     SettingsRow(title: store.S["nightMode"], systemIcon: "moon", theme: theme) {

@@ -26,6 +26,10 @@ struct AppleSignInButton: View {
         // Apple's own button, so the styling stays within their guidelines;
         // only the metrics are matched to PrimaryButton.
         .signInWithAppleButtonStyle(store.isNight ? .white : .black)
+        // Wraps a UIKit button that bakes its style in at construction, so
+        // changing appearance leaves a stale black-on-light (or white-on-dark)
+        // button behind. Changing identity forces a fresh one.
+        .id(store.isNight)
         .frame(height: 54)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .opacity(store.busy == .apple ? 0.5 : 1)
@@ -49,6 +53,7 @@ struct AppleReauthButton: View {
             store.completeAppleDelete(result)
         }
         .signInWithAppleButtonStyle(store.isNight ? .white : .black)
+        .id(store.isNight)
         .frame(height: 52)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .opacity(store.busy == .delete ? 0.5 : 1)

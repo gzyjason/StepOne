@@ -80,7 +80,12 @@ final class StepOneStore {
     var hintSeen = false
 
     // Appearance & preferences
+    /// Set only once the user has picked a side in Preferences. While it is
+    /// nil the app follows the device.
     var nightOverride: Bool?
+    /// What the device is currently set to. Seeded at launch so a dark device
+    /// never opens on a light frame, then kept in step by ContentView.
+    var systemIsNight = UITraitCollection.current.userInterfaceStyle == .dark
     var unit: DistanceUnit = .meters
     var stepNotif = true
     var promoNotif = false
@@ -174,7 +179,16 @@ final class StepOneStore {
 
     // MARK: Derived
 
-    var isNight: Bool { nightOverride ?? false }
+    var isNight: Bool { nightOverride ?? systemIsNight }
+
+    /// Flipping to whatever the device already is means the user has no
+    /// preference of their own, so the override is dropped and the app goes
+    /// back to following along. It is the only way back to automatic without
+    /// turning one switch into a three-way picker.
+    func toggleNight() {
+        let next = !isNight
+        nightOverride = next == systemIsNight ? nil : next
+    }
     var theme: StepOneTheme { .of(night: isNight) }
     var S: Strings { Strings(lang: lang, content: content) }
     /// Registered means Firebase has a *verified* account signed in. An

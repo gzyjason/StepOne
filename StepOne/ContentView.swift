@@ -13,6 +13,11 @@ import SwiftUI
 struct ContentView: View {
     @State private var store = StepOneStore()
 
+    /// The device's setting. Read here rather than in the store because only
+    /// a view can see it — and read *above* the override below, so what lands
+    /// here is the system value and not the app's own answer fed back.
+    @Environment(\.colorScheme) private var systemScheme
+
     private var theme: StepOneTheme { store.theme }
 
     var body: some View {
@@ -74,6 +79,9 @@ struct ContentView: View {
         .environment(\.stepTheme, theme)
         .environment(\.colorScheme, store.isNight ? .dark : .light)
         .animation(.easeInOut(duration: 0.4), value: store.isNight)
+        .onChange(of: systemScheme, initial: true) { _, scheme in
+            store.systemIsNight = scheme == .dark
+        }
         .animation(.easeOut(duration: 0.45), value: store.onboarding.done)
     }
 
