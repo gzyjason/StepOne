@@ -10,7 +10,7 @@
 import SwiftUI
 
 enum OnboardingStep: Equatable {
-    case quote, welcome, name, greet, demo, reward, types, register, verify, login
+    case quote, welcome, name, greet, primer, demo, reward, types, register, verify, login
 }
 
 @Observable
@@ -173,7 +173,23 @@ final class OnboardingState {
                 }
             }),
             (700, { [weak self] in withAnimation(.easeInOut(duration: 0.9)) { self?.phase = 1 } }),
-            (4200, { [weak self] in self?.startDemo() }),
+            (4200, { [weak self] in self?.startPrimer() }),
+        ])
+    }
+
+    // MARK: Primer
+
+    /// Two statements shown one at a time between the greeting and the
+    /// tutorial: what the app asks of you, then what comes next. Each fades
+    /// in on its own, holds long enough to be read, and fades back out.
+    func startPrimer() {
+        run([
+            (0, { [weak self] in self?.set(.primer, phase: 0) }),
+            (900, { [weak self] in self?.setPhase(1) }),
+            (5900, { [weak self] in self?.setPhase(2) }),
+            (6900, { [weak self] in self?.setPhase(3) }),
+            (11300, { [weak self] in self?.setPhase(4) }),
+            (12300, { [weak self] in self?.startDemo() }),
         ])
     }
 
@@ -359,6 +375,10 @@ final class OnboardingState {
     var welcomeOpacity: Double { (step == .welcome && phase >= 1) ? 1 : 0 }
     var ctaOpacity: Double { (step == .welcome && phase >= 2) ? 1 : 0 }
     var hintOpacity: Double { (step == .demo && phase >= 1) ? 1 : 0 }
+    /// Each primer line owns a single phase, so the one before it is already
+    /// on its way out by the time the next fades in.
+    var primer1Opacity: Double { (step == .primer && phase == 1) ? 1 : 0 }
+    var primer2Opacity: Double { (step == .primer && phase == 3) ? 1 : 0 }
     var reward1Opacity: Double { (step == .reward && phase >= 1 && phase < 3) ? 1 : 0 }
     var reward2Opacity: Double { (step == .reward && phase >= 2 && phase < 3) ? 1 : 0 }
     /// The greeting belongs to its own step only; the demo step is the

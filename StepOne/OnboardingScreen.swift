@@ -28,6 +28,7 @@ struct OnboardingScreen: View {
             rewardExplainer
             namePrompt
             greeting
+            primer
             typePicker
             registerForm
             verifyForm
@@ -351,6 +352,29 @@ struct OnboardingScreen: View {
                 .opacity(ob.greetingOpacity)
         }
         .allowsHitTesting(false)
+    }
+
+    // MARK: Primer (what the app asks of you, then what comes next)
+
+    private var primer: some View {
+        ZStack {
+            primerLine(store.S["obPrimer1"], opacity: ob.primer1Opacity)
+            primerLine(store.S["obPrimer2"], opacity: ob.primer2Opacity)
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// The reward explainer's type and measures, so the run of statement
+    /// screens reads as one voice.
+    private func primerLine(_ text: String, opacity: Double) -> some View {
+        Text(text)
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(theme.textPrimary)
+            .lineSpacing(8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 40)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .opacity(opacity)
     }
 
     // MARK: Trip types
