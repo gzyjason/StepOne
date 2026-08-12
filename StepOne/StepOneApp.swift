@@ -8,10 +8,15 @@
 import FirebaseCore
 import GoogleSignIn
 import SwiftUI
+import UserNotifications
 
 @main
 struct StepOneApp: App {
     init() {
+        // Has to be set before the app finishes launching, or a reminder that
+        // fires while StepOne is open is silently swallowed.
+        UNUserNotificationCenter.current().delegate = ReminderScheduler.shared
+
         // `configure()` traps when the plist is missing. It is checked in, so
         // this normally always runs — the guard is for a checkout that has
         // deliberately dropped it, which then degrades to `.notConfigured`

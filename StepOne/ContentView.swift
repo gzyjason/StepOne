@@ -36,8 +36,13 @@ struct ContentView: View {
             slideIn(isPresented: store.screen == .preferences) {
                 PreferencesScreen(store: store)
             }
-            slideIn(isPresented: store.screen == .notifications) {
+            // Notifications stays mounted under its detail page, so going
+            // back reveals it already in place.
+            slideIn(isPresented: store.screen == .notifications || store.screen == .reminder) {
                 NotificationsScreen(store: store)
+            }
+            slideIn(isPresented: store.screen == .reminder) {
+                ReminderDetailScreen(store: store)
             }
             slideIn(isPresented: store.screen == .help) {
                 HelpScreen(store: store)
@@ -89,7 +94,7 @@ struct ContentView: View {
     /// mounted underneath, so going back reveals it already in place.
     private var isSettingsFamily: Bool {
         switch store.screen {
-        case .settings, .account, .preferences, .notifications, .help, .language,
+        case .settings, .account, .preferences, .notifications, .reminder, .help, .language,
              .changeName, .changeEmail, .password:
             return true
         default:

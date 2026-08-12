@@ -585,22 +585,114 @@ struct NotificationsScreen: View {
             onBack: { store.screen = .settings }
         ) {
             VStack(spacing: 0) {
-                Button { store.stepNotif.toggle() } label: {
-                    SettingsRow(title: store.S["stepReminder"], theme: theme) {
-                        StepSwitch(isOn: store.stepNotif)
+                ForEach(Array(ReminderSlot.allCases.enumerated()), id: \.element) { index, slot in
+                    if index > 0 { Separator(theme: theme) }
+                    Button {
+                        store.activeReminder = slot
+                        store.screen = .reminder
+                    } label: {
+                        SettingsRow(
+                            title: store.S[slot.titleKey],
+                            detail: store.reminderDetail(slot),
+                            theme: theme
+                        ) { Chevron(theme: theme) }
                     }
+                    .buttonStyle(RowPressStyle())
                 }
-                .buttonStyle(RowPressStyle())
-                Separator(theme: theme)
-                Button { store.promoNotif.toggle() } label: {
-                    SettingsRow(title: store.S["promo"], theme: theme) {
-                        StepSwitch(isOn: store.promoNotif)
+            }
+            .glassCard(theme)
+
+            Text(store.S["remindersHint"])
+                .font(.system(size: 12))
+                .foregroundStyle(theme.hint)
+                .lineSpacing(2)
+                .padding(.horizontal, 16)
+                .padding(.top, -12)
+
+            if store.notificationsDenied { deniedNotice }
+        }
+        // The system is the source of truth, so what is on screen is whatever
+        // is genuinely scheduled — including from an earlier launch.
+        .task { await store.refreshReminders() }
+    }
+
+    /// Nothing the app can do from here: only iOS can grant this back.
+    private var deniedNotice: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(store.S["notifDenied"])
+                .font(.system(size: 13))
+                .foregroundStyle(theme.textSecondary)
+                .lineSpacing(2)
+
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                Text(store.S["openSettings"])
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(theme.accent)
+            }
+            .buttonStyle(PressStyle(scale: 1))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(theme)
+    }
+}
+
+// MARK: - Reminder detail
+
+struct ReminderDetailScreen: View {
+    @Bindable var store: StepOneStore
+    private var theme: StepOneTheme { store.theme }
+    private var slot: ReminderSlot { store.activeReminder }
+
+    var body: some View {
+        SettingsPage(
+            theme: theme,
+            backLabel: store.S["notifications"],
+            title: store.S[slot.titleKey],
+            blobs: AmbientBackground.Blob.topLeft,
+            onBack: { store.screen = .notifications }
+        ) {
+            VStack(spacing: 0) {
+                Button { store.toggleReminder(slot) } label: {
+                    SettingsRow(title: store.S["reminder"], theme: theme) {
+                        StepSwitch(isOn: store.reminder(slot).isOn)
                     }
                 }
                 .buttonStyle(RowPressStyle())
             }
             .glassCard(theme)
+
+            // The picker is only meaningful once there is something to time,
+            // so it arrives with the switch rather than sitting there greyed.
+            if store.reminder(slot).isOn {
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: { store.reminder(slot).time },
+                        set: { store.setReminderTime(slot, to: $0) }
+                    ),
+                    displayedComponents: .hourAndMinute
+                )
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+                .glassCard(theme)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if store.notificationsDenied {
+                Text(store.S["notifDenied"])
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(theme.textSecondary)
+                    .lineSpacing(2)
+                    .padding(.horizontal, 16)
+            }
         }
+        .animation(.easeOut(duration: 0.28), value: store.reminder(slot).isOn)
     }
 }
 

@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - Navigation
 
 enum Screen: Equatable {
-    case home, settings, account, preferences, language, notifications, help
+    case home, settings, account, preferences, language, notifications, reminder, help
     case tripTypes, discarded, journey
     case changeName, changeEmail, password
 }
@@ -87,8 +87,17 @@ final class StepOneStore {
     /// never opens on a light frame, then kept in step by ContentView.
     var systemIsNight = UITraitCollection.current.userInterfaceStyle == .dark
     var unit: DistanceUnit = .meters
-    var stepNotif = true
-    var promoNotif = false
+    /// Mirrors what is actually scheduled with the system, refreshed whenever
+    /// the notifications screen appears rather than persisted here.
+    var reminders: [ReminderSlot: ReminderSetting] = [
+        .morning: ReminderSetting(hour: ReminderSlot.morning.defaultHour),
+        .evening: ReminderSetting(hour: ReminderSlot.evening.defaultHour),
+    ]
+    /// Which slot the detail screen is showing.
+    var activeReminder: ReminderSlot = .morning
+    /// Set when notifications are switched off for the app in iOS Settings,
+    /// so the screen can say so instead of failing silently.
+    var notificationsDenied = false
 
     // Account. Identity is mirrored from `auth` — Firebase is the source of
     // truth — while everything below it stays on the device.
@@ -442,6 +451,77 @@ final class StepOneStore {
 
     func togglePhase(_ phaseIndex: Int, current: Bool) {
         openPhases[phaseIndex] = !current
+    }
+
+    // MARK: Reminders
+
+    func reminder(_ slot: ReminderSlot) -> ReminderSetting {
+        reminders[slot] ?? ReminderSetting(hour: slot.defaultHour)
+    }
+
+    /// The row's trailing text: the time it will fire, or that it is off.
+    func reminderDetail(_ slot: ReminderSlot) -> String {
+        let setting = reminder(slot)
+        guard setting.isOn else { return S["reminderOff"] }
+        return setting.time.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// Pulls the scheduled state back out of the system. Called when the
+    /// notifications screen appears, so a reminder set on a previous launch
+    /// still shows as on.
+    func refreshReminders() async {
+        let scheduled = await ReminderScheduler.shared.pending()
+        for slot in ReminderSlot.allCases {
+            if let found = scheduled[slot] {
+                reminders[slot] = found
+            } else {
+                reminders[slot]?.isOn = false
+            }
+        }
+        notificationsDenied = await ReminderScheduler.shared.authorizationStatus() == .denied
+    }
+
+    func toggleReminder(_ slot: ReminderSlot) {
+        guard !reminder(slot).isOn else {
+            reminders[slot]?.isOn = false
+            ReminderScheduler.shared.cancel(slot)
+            return
+        }
+        Task { [weak self] in
+            guard let self else { return }
+            // Turning it on is the moment to ask; there is no reason to
+            // prompt anyone who never opens this screen.
+            guard await ReminderScheduler.shared.requestAuthorization() else {
+                self.notificationsDenied = true
+                return
+            }
+            self.notificationsDenied = false
+            self.reminders[slot]?.isOn = true
+            await self.applyReminder(slot)
+        }
+    }
+
+    func setReminderTime(_ slot: ReminderSlot, to date: Date) {
+        var setting = reminder(slot)
+        setting.setTime(date)
+        guard setting != reminders[slot] else { return }
+        reminders[slot] = setting
+        guard setting.isOn else { return }
+        Task { [weak self] in await self?.applyReminder(slot) }
+    }
+
+    private func applyReminder(_ slot: ReminderSlot) async {
+        let setting = reminder(slot)
+        guard setting.isOn else {
+            ReminderScheduler.shared.cancel(slot)
+            return
+        }
+        await ReminderScheduler.shared.schedule(
+            slot,
+            at: setting,
+            title: S["notifTitle"],
+            body: S["notifBody"]
+        )
     }
 
     // MARK: Resend countdown
