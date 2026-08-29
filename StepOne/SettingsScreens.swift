@@ -718,17 +718,11 @@ struct HelpScreen: View {
             onBack: { store.screen = .settings }
         ) {
             VStack(spacing: 0) {
-                SettingsRow(title: store.S["faq"], theme: theme) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(theme.chevron)
-                }
+                externalLinkRow(title: store.S["faq"], url: "https://stepone.morso.one/faq/")
                 Separator(theme: theme)
-                SettingsRow(title: store.S["tos"], theme: theme) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(theme.chevron)
-                }
+                externalLinkRow(title: store.S["tos"], url: "https://stepone.morso.one/terms/")
+                Separator(theme: theme)
+                externalLinkRow(title: store.S["privacy"], url: "https://stepone.morso.one/privacy/")
                 Separator(theme: theme)
                 SettingsRow(
                     title: store.S["appInfo"],
@@ -738,6 +732,22 @@ struct HelpScreen: View {
             }
             .glassCard(theme)
         }
+    }
+
+    @ViewBuilder
+    private func externalLinkRow(title: String, url: String) -> some View {
+        Button {
+            if let url = URL(string: url) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            SettingsRow(title: title, theme: theme) {
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(theme.chevron)
+            }
+        }
+        .buttonStyle(RowPressStyle())
     }
 }
 
