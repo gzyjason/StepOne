@@ -20,6 +20,7 @@ struct OnboardingScreen: View {
     var body: some View {
         ZStack {
             theme.screenBg.ignoresSafeArea()
+                .dismissKeyboardOnTap()
             AmbientBackground(theme: theme, spots: AmbientBackground.Blob.home)
 
             quote
@@ -320,7 +321,10 @@ struct OnboardingScreen: View {
                             .fill(ob.nameError ? theme.destructive : theme.sepThin)
                             .frame(height: 1.5)
                     }
-                    .onSubmit { ob.confirmName() }
+                    .onSubmit {
+                        hideKeyboard()
+                        ob.confirmName()
+                    }
                     .submitLabel(.done)
 
                 FieldError(
@@ -330,7 +334,10 @@ struct OnboardingScreen: View {
                 )
             }
 
-            Button { ob.confirmName() } label: {
+            Button {
+                hideKeyboard()
+                ob.confirmName()
+            } label: {
                 Text(store.S["confirm"])
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
@@ -443,8 +450,14 @@ struct OnboardingScreen: View {
                     }
                 }
                 .glassCard(theme)
+                // Inside the ScrollView, not on it. A ScrollView clips to its
+                // bounds, so a card flush against that edge gets its drop
+                // shadow sliced off in a straight line — which reads as a
+                // square edge tracing the rounded corners. The padding gives
+                // the shadow room to fall inside the clip.
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 18)
 
             PrimaryButton(
                 title: store.S["confirm"],

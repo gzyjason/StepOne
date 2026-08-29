@@ -12,6 +12,22 @@ import SwiftUI
 /// onboarding demo deck, which handle swipes the same way.
 enum DragAxis { case horizontal, vertical }
 
+// MARK: - Keyboard dismissal
+
+/// No `@FocusState` is threaded through the form fields, so this is the one
+/// reliable way to drop whichever field currently owns the keyboard.
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+extension View {
+    /// Tapping empty space closes the keyboard, matching the platform default
+    /// every other text-heavy screen already gets for free.
+    func dismissKeyboardOnTap() -> some View {
+        onTapGesture { hideKeyboard() }
+    }
+}
+
 // MARK: - Press feedback
 
 struct PressStyle: ButtonStyle {
@@ -38,8 +54,11 @@ extension View {
     /// two-layer drop shadow.
     func glass<S: InsettableShape>(_ theme: StepOneTheme, shape: S, tint: Color? = nil, shadow: Bool = true) -> some View {
         self
-            .background(.ultraThinMaterial, in: shape)
-            .background(tint ?? theme.glassTint, in: shape)
+            // One shared clip for both backgrounds and the content, rather
+            // than each layer clipping to its own copy of `shape`.
+            .background(.ultraThinMaterial)
+            .background(tint ?? theme.glassTint)
+            .clipShape(shape)
             .overlay(shape.strokeBorder(theme.glassBorder, lineWidth: 0.5))
             .compositingGroup()
             .shadow(color: shadow ? theme.shadow : .clear, radius: 3, x: 0, y: 1)
@@ -103,7 +122,20 @@ struct AmbientBackground: View {
                 }
             }
         }
+        // An edge-anchored blob is centred *on* the edge, so half of it hangs
+        // outside this view's frame — and the off-screen screens parked to the
+        // right by `slideIn` are still rendered, so their left-edge blobs would
+        // otherwise spill back over Home's header from above it in the ZStack,
+        // washing out the menu button and the greeting.
+        //
+        // `ignoresSafeArea` is what makes the clip invisible: it must sit
+        // outermost so the whole layer — GeometryReader and clip alike — is
+        // laid out at full-screen size. Clipping to the safe-area frame
+        // instead would cut the wash off in a hard line under the status bar
+        // and above the home indicator.
+        .clipped()
         .allowsHitTesting(false)
+        .ignoresSafeArea()
     }
 }
 
@@ -429,6 +461,11 @@ struct PrimaryButton: View {
             .frame(height: height)
             .background(theme.accent, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .opacity(enabled ? 1 : 0.4)
+            // Without this, the shadow is cast per-layer rather than from the
+            // button's actual composited silhouette, so PressStyle's scale on
+            // tap leaves a stray, wrongly-sized blob behind the shrunk button
+            // instead of tracking it.
+            .compositingGroup()
             .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
         }
         .buttonStyle(PressStyle(scale: 0.98))

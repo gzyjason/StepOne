@@ -99,6 +99,7 @@ private struct GoogleButtonSurface: View {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(border, lineWidth: 0.5)
             )
+            .compositingGroup()
             .shadow(color: .black.opacity(0.12), radius: 5, x: 0, y: 2)
         }
         .buttonStyle(PressStyle(scale: 0.98))

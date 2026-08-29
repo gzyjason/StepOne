@@ -23,6 +23,7 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             theme.screenBg.ignoresSafeArea()
+                .dismissKeyboardOnTap()
 
             HomeScreen(store: store)
 
@@ -75,9 +76,13 @@ struct ContentView: View {
 
             alerts
 
+            // No transition here: onboarding's own background and ambient
+            // wash render unconditionally, so cross-fading this away would
+            // dissolve a translucent, warm-tinted copy of them over Home's
+            // header for the duration of the animation. Home is already
+            // fully built underneath, so an instant swap is the clean cut.
             if !store.onboarding.done {
                 OnboardingScreen(store: store)
-                    .transition(.opacity)
                     .zIndex(60)
             }
         }
@@ -87,7 +92,12 @@ struct ContentView: View {
         .onChange(of: systemScheme, initial: true) { _, scheme in
             store.systemIsNight = scheme == .dark
         }
-        .animation(.easeOut(duration: 0.45), value: store.onboarding.done)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button(store.S["done"]) { hideKeyboard() }
+            }
+        }
     }
 
     /// Settings and the screens that sit on top of it all keep Settings

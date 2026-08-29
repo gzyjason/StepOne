@@ -22,6 +22,7 @@ private struct SettingsPage<Content: View>: View {
     var body: some View {
         ZStack {
             theme.screenBg.ignoresSafeArea()
+                .dismissKeyboardOnTap()
             AmbientBackground(theme: theme, spots: blobs)
             VStack(spacing: 0) {
                 ScreenHeader(backLabel: backLabel, title: title, subtitle: subtitle, theme: theme, onBack: onBack)
@@ -726,7 +727,7 @@ struct HelpScreen: View {
                 Separator(theme: theme)
                 SettingsRow(
                     title: store.S["appInfo"],
-                    detail: "StepOne · \(store.S["version"]) \(store.content.version)",
+                    detail: "v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")",
                     theme: theme
                 ) { EmptyView() }
             }
