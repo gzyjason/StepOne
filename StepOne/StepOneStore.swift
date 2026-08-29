@@ -986,10 +986,20 @@ final class StepOneStore {
                     self.federatedError = self.authMessage
                     return
                 }
+                self.syncNameFromFirebase()
                 self.restoreProgress(for: self.auth.user?.email)
                 self.rgStage = .form
                 onSignedIn()
             }
+        }
+    }
+
+    /// Firebase's copy wins when there is one — same rule `finishOnboarding`
+    /// uses — so a name Apple or Google hands over shows up immediately even
+    /// on the Settings sign-in path, which never reaches `finishOnboarding`.
+    private func syncNameFromFirebase() {
+        if let firebaseName = auth.user?.displayName, !firebaseName.isEmpty {
+            name = firebaseName
         }
     }
 
@@ -1011,6 +1021,7 @@ final class StepOneStore {
                     self.federatedError = self.authMessage
                     return
                 }
+                self.syncNameFromFirebase()
                 self.restoreProgress(for: self.auth.user?.email)
                 self.rgStage = .form
                 onSignedIn()
